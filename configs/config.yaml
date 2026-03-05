@@ -1,0 +1,84 @@
+# ============================================================
+# PBL5
+# ============================================================
+
+# --- Data Settings ---
+data:
+  raw_data_dir: "dataset/Raw Data"
+  annotated_data_dir: "dataset/Annotated Data"
+  sampling_rate: 50          # Hz - tần số lấy mẫu
+  sensor_type: "acc"         # Loại cảm biến sử dụng (acc, gyro, ori)
+
+  # Các nhãn fall và ADL
+  fall_labels: ["FOL", "FKL", "BSC", "SDL"]
+  adl_labels: ["STD", "WAL", "JOG", "JUM", "STU", "STN", "SCH", "SIT", "CHU", "CSI", "CSO", "LYI"]
+
+  # Windowing
+  window_size: 100           # Số sample mỗi cửa sổ (100 samples = 2s @ 50Hz)
+  overlap: 0.15              # 15% overlap giữa các cửa sổ
+
+  # Phân chia dữ liệu (theo subject ID để tránh data leakage)
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+
+# --- Model Settings ---
+model:
+  type: "stacked_lstm"       # "stacked_lstm", "cnn_1d", "ensemble"
+  input_size: 3              # Số kênh đầu vào (x, y, z)
+
+  # Stacked LSTM
+  lstm:
+    hidden_size: 30           # Số neurons LSTM
+    num_layers: 2             # Số tầng LSTM xếp chồng
+    dropout: 0.3
+    bidirectional: false
+
+  # 1D CNN
+  cnn:
+    filters: [64, 128]       # Số filter mỗi lớp Conv1D
+    kernel_size: 3
+    pool_size: 2
+    dropout: 0.3
+
+  # Ensemble
+  ensemble:
+    lstm_weight: 0.6
+    cnn_weight: 0.4
+
+  num_classes: 1              # Binary classification (sigmoid output)
+
+# --- Training Settings ---
+training:
+  epochs: 50
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: "adam"           # "adam", "sgd"
+  loss_function: "bce"       # Binary Cross Entropy
+  scheduler:
+    type: "reduce_on_plateau" # "step", "reduce_on_plateau", "cosine"
+    patience: 5
+    factor: 0.5
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.001
+
+# --- Preprocessing ---
+preprocessing:
+  lowpass_filter:
+    enabled: true
+    cutoff_freq: 20           # Hz
+    order: 4                  # Bậc bộ lọc Butterworth
+  normalization: "standard"   # "standard" (z-score), "minmax", "none"
+
+# --- Paths ---
+paths:
+  checkpoint_dir: "models/checkpoints"
+  final_model_dir: "models/final_model"
+  log_dir: "logs"
+
+# --- Misc ---
+seed: 42
+device: "auto"                # "auto", "cpu", "cuda"

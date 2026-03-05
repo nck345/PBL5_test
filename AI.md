@@ -1,0 +1,63 @@
+# Tài liệu nội bộ dự án - Hệ thống AI phát hiện té ngã cho người cao tuổi (PBL5)
+
+File này đóng vai trò cung cấp cho AI cái nhìn tổng quan về kiến trúc và cấu trúc thư mục của dự án, nhằm hỗ trợ việc đọc hiểu, debug, và mở rộng tính năng thuận lợi hơn.
+
+## 1. Tổng quan dự án
+
+Dự án này tập trung xây dựng một hệ thống IoT thông minh giúp phát hiện và cảnh báo té ngã ở người cao tuổi theo thời gian thực.
+Các điểm cốt lõi của dự án:
+- **Thiết bị đeo (Wearable)**: Sử dụng cảm biến gia tốc 3 trục để thu thập dữ liệu chuyển động của người dùng.
+- **Trí tuệ nhân tạo (AI)**: Áp dụng mô hình học sâu **LSTM** (Long Short-Term Memory) để phân tích dữ liệu và phân loại hành vi té ngã với độ chính xác đạt tới 95.87%.
+- **Hạ tầng kết nối**: Sử dụng các giao thức năng lượng thấp (6LowPAN, CoAP) và thiết bị Gateway (Raspberry Pi) để truyền tải dữ liệu một cách hiệu quả và tiết kiệm điện năng.
+
+## 2. Cấu trúc thư mục nền tảng
+
+Cấu trúc thư mục tổng thể của dự án được tổ chức như sau nhằm phân rõ các lớp quản lý gồm: lớp dữ liệu, lớp nhúng (thực thi trên thiết bị), lớp kết nối (Gateway) và lớp triển khai AI.
+
+```text
+PBL5_test/
+├── dataset/                    # Quản lý dữ liệu (đã được thu thập và cung cấp sẵn)
+│   ├── Raw Data/               # Dữ liệu thô ban đầu
+│   ├── Annotated Data/         # Dữ liệu đã được gán nhãn
+│   └── Readme.txt              # Thông tin về bộ dữ liệu
+├── firmware/                   # <--- Cho Wearable Node (NUCLEO-L152RE) [cite: 282]
+│   ├── main.c                  # Cấu hình cảm biến LSM6DS0 & SPI [cite: 285]
+│   ├── coap-server.c           # Triển khai CoAP Server trên node [cite: 293]
+│   └── project-conf.h          # Cấu hình 6LowPAN & IPv6 [cite: 288]
+├── gateway/                    # <--- Cho Smart IoT Gateway (Raspberry Pi) [cite: 301]
+│   ├── tunslip6.c              # Tạo tunnel IPv6/IPv4 
+│   ├── coap_collector.py       # Thu thập dữ liệu qua CoAP GET [cite: 294, 511]
+│   └── mqtt_client.py          # Gửi cảnh báo GPS qua MQTT QoS 2 [cite: 497, 500]
+├── models/                     # Lưu trữ Model AI
+│   ├── checkpoints/            # Các phiên bản trong lúc train
+│   └── final_model/            # Model Stacked LSTM hoàn thiện 
+├── notebooks/                  # EDA & Thử nghiệm mô hình (Jupyter)
+├── src/                        # Mã nguồn chính của AI
+│   ├── architecture.py         # Định nghĩa 1D CNN và Ensemble LSTM [cite: 94, 479]
+│   ├── dataset.py              # Xử lý windowing & 15% overlap logic [cite: 481, 483]
+│   ├── trainer.py              # Logic huấn luyện Backpropagation [cite: 491]
+│   ├── evaluator.py            # Tính Precision, Recall, Accuracy [cite: 545]
+│   └── utils.py                # Bộ lọc IIR Low-pass filter 
+├── configs/
+│   └── config.yaml             # Tham số: 50Hz, 30 neurons, stacking weights [cite: 461, 527]
+├── train.py                    # Script chạy huấn luyện
+├── test.py                     # Script chạy đánh giá (Offline)
+├── predict.py                  # Script chạy nhận diện thời gian thực (Online)
+├── requirements.txt            # Thư viện: TensorFlow, MbientLab API, Apache Flink [cite: 563]
+└── AI.md                       # File tài liệu mô tả cho AI (File này)
+```
+
+## 3. Các Task cần thực hiện
+
+Dưới đây là danh sách các công việc (tasks) cần thực hiện để khởi tạo và lập trình mô hình AI dựa trên cấu trúc thư mục đã định nghĩa:
+
+### Lập trình chi tiết các module AI
+- [ ] **`src/architecture.py`**: Định nghĩa kiến trúc mô hình học sâu (ví dụ: Stacked LSTM / 1D CNN).
+- [ ] **`src/dataset.py`**: Xây dựng logic tải, tiền xử lý dữ liệu (windowing, overlap định mức 15%), phân chia dữ liệu thành Train/Validation/Test và tạo DataLoader.
+- [ ] **`src/trainer.py`**: Xây dựng pipeline huấn luyện mô hình (bao gồm vòng lặp Train, đánh giá Validation, Loss, Optimizer) và lưu lại checkpoints.
+- [ ] **`src/evaluator.py`**: Cài đặt các hàm đánh giá hiệu năng mô hình (Accuracy, Precision, Recall, F1-Score, Confusion Matrix).
+- [ ] **`src/utils.py`**: Triển khai các hàm tiện ích như bộ lọc IIR Low-pass, chuẩn hóa dữ liệu, và visualize kết quả.
+- [ ] **`configs/config.yaml`**: Trình bày và thiết lập các thông số hyperparameters (e.g. freqs: 50Hz, neurons: 30, window_size).
+- [ ] **`train.py`**: Script kết nối Datasets, Architecture, Trainer để tiến hành huấn luyện từ dòng lệnh (giám sát metrics của cả Train và Validation).
+- [ ] **`test.py`**: Script load model đã train để chạy kiểm thử offline trên tập Test.
+- [ ] **`predict.py`**: Script cho luồng Online Inference (dự đoán thời gian thực) nhận dữ liệu từ Gateway hoặc luồng stream trực tiếp.
