@@ -1,0 +1,23 @@
+# Python / Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Môi trường ảo (Virtual environments)
+venv/
+env/
+.env
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Dữ liệu & AI Models (KHÔNG đưa lên GitHub)
+dataset/
+models/
+logs/
+
+# IDE & Hệ điều hành
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
