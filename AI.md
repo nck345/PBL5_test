@@ -49,8 +49,6 @@ PBL5_test/
 
 ## 3. Các Task cần thực hiện
 
-Dưới đây là danh sách các công việc (tasks) cần thực hiện để khởi tạo và lập trình mô hình AI dựa trên cấu trúc thư mục đã định nghĩa:
-
 ### Lập trình chi tiết các module AI
 - [x] **`src/architecture.py`**: Định nghĩa kiến trúc mô hình học sâu (ví dụ: Stacked LSTM / 1D CNN).
 - [x] **`src/dataset.py`**: Xây dựng logic tải, tiền xử lý dữ liệu (windowing, overlap định mức 15%), phân chia dữ liệu thành Train/Validation/Test và tạo DataLoader.
