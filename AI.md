@@ -30,20 +30,23 @@ PBL5_test/
 │   └── mqtt_client.py          # Gửi cảnh báo GPS qua MQTT QoS 2 [cite: 497, 500]
 ├── models/                     # Lưu trữ Model AI
 │   ├── checkpoints/            # Các phiên bản trong lúc train
-│   └── final_model/            # Model Stacked LSTM hoàn thiện 
+│   └── final_model/            # Model Stacked LSTM/CNN hoàn thiện 
 ├── notebooks/                  # EDA & Thử nghiệm mô hình (Jupyter)
 ├── src/                        # Mã nguồn chính của AI
-│   ├── architecture.py         # Định nghĩa 1D CNN và Ensemble LSTM [cite: 94, 479]
-│   ├── dataset.py              # Xử lý windowing & 15% overlap logic [cite: 481, 483]
-│   ├── trainer.py              # Logic huấn luyện Backpropagation [cite: 491]
-│   ├── evaluator.py            # Tính Precision, Recall, Accuracy [cite: 545]
-│   └── utils.py                # Bộ lọc IIR Low-pass filter 
+│   ├── __init__.py             # Khởi tạo package
+│   ├── architecture.py         # Định nghĩa Stacked LSTM, 1D CNN và Ensemble
+│   ├── dataset.py              # Xử lý windowing, overlap 15% & PyTorch DataLoader
+│   ├── trainer.py              # Logic huấn luyện mô hình (Trainer class)
+│   ├── evaluator.py            # Tính Accuracy, Precision, Recall, F1-Score
+│   └── utils.py                # Bộ lọc IIR Low-pass filter, logging, utils
 ├── configs/
-│   └── config.yaml             # Tham số: 50Hz, 30 neurons, stacking weights [cite: 461, 527]
-├── train.py                    # Script chạy huấn luyện
-├── test.py                     # Script chạy đánh giá (Offline)
-├── predict.py                  # Script chạy nhận diện thời gian thực (Online)
-├── requirements.txt            # Thư viện: TensorFlow, MbientLab API, Apache Flink [cite: 563]
+│   └── config.yaml             # Tham số cấu hình model, data, hyperparameters
+├── logs/                       # Lưu trữ file báo cáo (predict_reports, test_results)
+├── train.py                    # Script chạy huấn luyện mô hình
+├── test.py                     # Script chạy đánh giá (Offline) trên tập Test
+├── predict.py                  # Script nhận diện (Online/Offline) trên file hoặc stream
+├── run.bat                     # Script hỗ trợ chạy lệnh nhanh trên HĐH Windows
+├── requirements.txt            # Thư viện yêu cầu: torch, numpy, pandas, scikit-learn, v.v.
 └── AI.md                       # File tài liệu mô tả cho AI (File này)
 ```
 
