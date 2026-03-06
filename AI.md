@@ -52,12 +52,12 @@ PBL5_test/
 Dưới đây là danh sách các công việc (tasks) cần thực hiện để khởi tạo và lập trình mô hình AI dựa trên cấu trúc thư mục đã định nghĩa:
 
 ### Lập trình chi tiết các module AI
-- [ ] **`src/architecture.py`**: Định nghĩa kiến trúc mô hình học sâu (ví dụ: Stacked LSTM / 1D CNN).
-- [ ] **`src/dataset.py`**: Xây dựng logic tải, tiền xử lý dữ liệu (windowing, overlap định mức 15%), phân chia dữ liệu thành Train/Validation/Test và tạo DataLoader.
-- [ ] **`src/trainer.py`**: Xây dựng pipeline huấn luyện mô hình (bao gồm vòng lặp Train, đánh giá Validation, Loss, Optimizer) và lưu lại checkpoints.
-- [ ] **`src/evaluator.py`**: Cài đặt các hàm đánh giá hiệu năng mô hình (Accuracy, Precision, Recall, F1-Score, Confusion Matrix).
-- [ ] **`src/utils.py`**: Triển khai các hàm tiện ích như bộ lọc IIR Low-pass, chuẩn hóa dữ liệu, và visualize kết quả.
-- [ ] **`configs/config.yaml`**: Trình bày và thiết lập các thông số hyperparameters (e.g. freqs: 50Hz, neurons: 30, window_size).
-- [ ] **`train.py`**: Script kết nối Datasets, Architecture, Trainer để tiến hành huấn luyện từ dòng lệnh (giám sát metrics của cả Train và Validation).
-- [ ] **`test.py`**: Script load model đã train để chạy kiểm thử offline trên tập Test.
-- [ ] **`predict.py`**: Script cho luồng Online Inference (dự đoán thời gian thực) nhận dữ liệu từ Gateway hoặc luồng stream trực tiếp.
+- [x] **`src/architecture.py`**: Định nghĩa kiến trúc mô hình học sâu (ví dụ: Stacked LSTM / 1D CNN).
+- [x] **`src/dataset.py`**: Xây dựng logic tải, tiền xử lý dữ liệu (windowing, overlap định mức 15%), phân chia dữ liệu thành Train/Validation/Test và tạo DataLoader.
+- [x] **`src/trainer.py`**: Xây dựng pipeline huấn luyện mô hình (bao gồm vòng lặp Train, đánh giá Validation, Loss, Optimizer) và lưu lại checkpoints.
+- [x] **`src/evaluator.py`**: Cài đặt các hàm đánh giá hiệu năng mô hình (Accuracy, Precision, Recall, F1-Score, Confusion Matrix).
+- [x] **`src/utils.py`**: Triển khai các hàm tiện ích như bộ lọc IIR Low-pass, chuẩn hóa dữ liệu, và visualize kết quả.
+- [x] **`configs/config.yaml`**: Trình bày và thiết lập các thông số hyperparameters (e.g. freqs: 50Hz, neurons: 30, window_size).
+- [x] **`train.py`**: Script kết nối Datasets, Architecture, Trainer để tiến hành huấn luyện từ dòng lệnh (giám sát metrics của cả Train và Validation).
+- [x] **`test.py`**: Script load model đã train để chạy kiểm thử offline trên tập Test.
+- [x] **`predict.py`**: Script cho luồng Online Inference (dự đoán thời gian thực) nhận dữ liệu từ Gateway hoặc luồng stream trực tiếp.
