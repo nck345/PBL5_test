@@ -4,6 +4,7 @@ Module: trainer.py
 Pipeline huấn luyện mô hình: training loop, validation, checkpoints, early stopping.
 """
 
+import sys
 import os
 import time
 import copy
@@ -95,14 +96,17 @@ class Trainer:
             'lr': []
         }
 
-    def _train_one_epoch(self, train_loader) -> tuple:
+    def _train_one_epoch(self, train_loader, epoch: int = 0, verbose: bool = False) -> tuple:
         """Huấn luyện 1 epoch."""
         self.model.train()
         running_loss = 0.0
         correct = 0
         total = 0
 
-        for X_batch, y_batch in train_loader:
+        # Thay vì chèn đè lên tất cả, ta cho pbar chạy động và xóa khi xong
+        pbar = tqdm(train_loader, desc=f"Train", leave=False, dynamic_ncols=True) if verbose else train_loader
+
+        for X_batch, y_batch in pbar:
             X_batch = X_batch.to(self.device)
             y_batch = y_batch.to(self.device)
 
@@ -122,19 +126,28 @@ class Trainer:
             correct += (predicted == y_batch).sum().item()
             total += y_batch.size(0)
 
+            if verbose and isinstance(pbar, tqdm):
+                pbar.set_postfix({'loss': f"{running_loss/total:.3f}", 'acc': f"{100.0*correct/total:.1f}%"})
+
         epoch_loss = running_loss / total
         epoch_acc = 100.0 * correct / total
+        
+        if verbose and isinstance(pbar, tqdm):
+            pbar.close()
+            
         return epoch_loss, epoch_acc
 
     @torch.no_grad()
-    def _validate(self, val_loader) -> tuple:
+    def _validate(self, val_loader, epoch: int = 0, verbose: bool = False) -> tuple:
         """Đánh giá trên tập validation."""
         self.model.eval()
         running_loss = 0.0
         correct = 0
         total = 0
 
-        for X_batch, y_batch in val_loader:
+        pbar = tqdm(val_loader, desc=f"Val  ", leave=False, dynamic_ncols=True) if verbose else val_loader
+
+        for X_batch, y_batch in pbar:
             X_batch = X_batch.to(self.device)
             y_batch = y_batch.to(self.device)
 
@@ -145,9 +158,16 @@ class Trainer:
             predicted = (outputs >= 0.5).float()
             correct += (predicted == y_batch).sum().item()
             total += y_batch.size(0)
+            
+            if verbose and isinstance(pbar, tqdm):
+                pbar.set_postfix({'loss': f"{running_loss/total:.3f}", 'acc': f"{100.0*correct/total:.1f}%"})
 
         epoch_loss = running_loss / total
         epoch_acc = 100.0 * correct / total
+        
+        if verbose and isinstance(pbar, tqdm):
+            pbar.close()
+            
         return epoch_loss, epoch_acc
 
     def train(self, train_loader, val_loader, verbose: bool = True) -> dict:
@@ -181,10 +201,10 @@ class Trainer:
             epoch_start = time.time()
 
             # Train
-            train_loss, train_acc = self._train_one_epoch(train_loader)
+            train_loss, train_acc = self._train_one_epoch(train_loader, epoch, verbose)
 
             # Validate
-            val_loss, val_acc = self._validate(val_loader)
+            val_loss, val_acc = self._validate(val_loader, epoch, verbose)
 
             # Lưu history
             current_lr = self.optimizer.param_groups[0]['lr']
@@ -195,9 +215,11 @@ class Trainer:
             self.history['lr'].append(current_lr)
 
             epoch_time = time.time() - epoch_start
-
-            # Print info
+            
+            # Khóa tự in dòng mới liên tục, dùng carriage return (\r) thay thế
             if verbose:
+                # Xóa dòng cũ nếu có
+                sys.stdout.write('\033[K') 
                 print(f"Epoch [{epoch:3d}/{self.epochs}] "
                       f"| Train Loss: {train_loss:.4f} Acc: {train_acc:.2f}% "
                       f"| Val Loss: {val_loss:.4f} Acc: {val_acc:.2f}% "
