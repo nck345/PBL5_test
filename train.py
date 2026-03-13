@@ -34,10 +34,12 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=None,
                         help='Learning rate (ghi đè config)')
     parser.add_argument('--model', type=str, default=None,
-                        choices=['stacked_lstm', 'cnn_1d', 'ensemble'],
+                        choices=['lstm', 'stacked_lstm', 'bilstm_cnn'],
                         help='Loại model (ghi đè config)')
     parser.add_argument('--device', type=str, default=None,
                         help='Device: auto, cpu, cuda')
+    parser.add_argument('--no-es', action='store_true',
+                        help='Tắt tính năng Early Stopping (cho chạy hết epochs)')
     return parser.parse_args()
 
 
@@ -61,6 +63,9 @@ def main():
         config['model']['type'] = args.model
     if args.device is not None:
         config['device'] = args.device
+    if args.no_es:
+        if 'training' in config and 'early_stopping' in config['training']:
+            config['training']['early_stopping']['enabled'] = False
 
     # ========================================
     # 2. Setup

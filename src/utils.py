@@ -301,6 +301,95 @@ def plot_roc_curve(fpr, tpr, auc_score: float,
     plt.close()
 
 
+def plot_combined_training_curves(all_histories: dict, 
+                                  title: str = "Combined Training Curves",
+                                  save_path: str = None):
+    """
+    Vẽ biểu đồ chung cho nhiều mô hình (Train/Val Loss và Train/Val Accuracy).
+
+    Args:
+        all_histories: Dict chứa lịch sử huấn luyện dạng {model_name: history_dict}
+        title: Tiêu đề
+        save_path: Đường dẫn lưu ảnh
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    colors = ['b', 'r', 'g', 'm', 'c', 'y', 'k']
+
+    for i, (model_name, history) in enumerate(all_histories.items()):
+        color = colors[i % len(colors)]
+        epochs = range(1, len(history['val_loss']) + 1)
+        
+        # Plot Loss
+        axes[0].plot(epochs, history['train_loss'], f'{color}--', 
+                     label=f'{model_name} Train Loss', linewidth=1.5, alpha=0.6)
+        axes[0].plot(epochs, history['val_loss'], f'{color}-', 
+                     label=f'{model_name} Val Loss', linewidth=2.0)
+        
+        # Plot Acc
+        if 'val_acc' in history and len(history['val_acc']) > 0:
+            axes[1].plot(epochs, history['train_acc'], f'{color}--', 
+                         label=f'{model_name} Train Acc', linewidth=1.5, alpha=0.6)
+            axes[1].plot(epochs, history['val_acc'], f'{color}-', 
+                         label=f'{model_name} Val Acc', linewidth=2.0)
+
+    axes[0].set_xlabel('Epoch')
+    axes[0].set_ylabel('Loss')
+    axes[0].set_title(f'{title} - Loss')
+    axes[0].legend(fontsize='small')
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].set_xlabel('Epoch')
+    axes[1].set_ylabel('Accuracy (%)')
+    axes[1].set_title(f'{title} - Accuracy')
+    axes[1].legend(fontsize='small')
+    axes[1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def plot_combined_roc_curves(all_roc_data: dict, 
+                             title: str = "Combined ROC Curves",
+                             save_path: str = None):
+    """
+    Vẽ biểu đồ ROC chung cho nhiều mô hình.
+
+    Args:
+        all_roc_data: Dict dạng {model_name: {'fpr': fpr, 'tpr': tpr, 'auc': auc}}
+        title: Tiêu đề
+        save_path: Đường dẫn lưu ảnh
+    """
+    plt.figure(figsize=(9, 7))
+    
+    colors = ['darkorange', 'green', 'blue', 'red', 'purple', 'brown']
+    
+    for i, (model_name, data) in enumerate(all_roc_data.items()):
+        color = colors[i % len(colors)]
+        plt.plot(data['fpr'], data['tpr'], color=color, lw=2,
+                 label=f'{model_name} (AUC = {data["auc"]:.4f})')
+                 
+    plt.plot([0, 1], [0, 1], color='navy', lw=1, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(title)
+    plt.legend(loc='lower right')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+
 # ============================================================
 # 6. Miscellaneous
 # ============================================================

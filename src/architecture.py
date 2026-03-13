@@ -9,7 +9,29 @@ import torch.nn as nn
 
 
 # ============================================================
-# 1. Stacked LSTM
+# 1. LSTM (Tham khảo từ Kajal)
+# ============================================================
+
+class LSTM(nn.Module):
+    """
+    Mô hình LSTM thuần tuý (tham khảo).
+    """
+    def __init__(self, input_size: int = 3, hidden_size: int = 64, num_classes: int = 1):
+        super(LSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size=input_size, hidden_size=hidden_size, batch_first=True)
+        self.fc = nn.Sequential(
+            nn.Linear(hidden_size, num_classes),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        lstm_out, (h_n, c_n) = self.lstm(x)
+        out = self.fc(h_n[-1])
+        return out.squeeze(-1)
+
+
+# ============================================================
+# 2. Stacked LSTM (Hiện tại)
 # ============================================================
 
 class StackedLSTM(nn.Module):
@@ -88,120 +110,93 @@ class StackedLSTM(nn.Module):
 
 
 # ============================================================
-# 2. 1D CNN
+# 3. BiLSTM_CNN (Cải tiến dựa trên Kaggle/Tham khảo)
 # ============================================================
 
-class FallDetectionCNN(nn.Module):
+class Attention(nn.Module):
+    def __init__(self, hidden_size, return_sequences=True):
+        super(Attention, self).__init__()
+        self.return_sequences = return_sequences
+        self.W = nn.Linear(hidden_size, 1, bias=True)
+
+    def forward(self, x):
+        e = torch.tanh(self.W(x))
+        a = torch.softmax(e, dim=1)
+        output = x * a
+        if self.return_sequences:
+            return output
+        return torch.sum(output, dim=1)
+
+class BiLSTM_CNN(nn.Module):
     """
-    Mô hình 1D CNN cho phát hiện té ngã.
-
-    Kiến trúc:
-        Input (window_size, 3) → Conv1D blocks → Global Average Pooling
-        → FC → Sigmoid → Output (1)
+    Mô hình lai CNN + BiLSTM + Attention lấy cảm hứng từ repo Kajal.
     """
-
-    def __init__(self, input_size: int = 3, window_size: int = 100,
-                 filters: list = None, kernel_size: int = 3,
-                 pool_size: int = 2, dropout: float = 0.3,
-                 num_classes: int = 1):
-        """
-        Args:
-            input_size: Số kênh đầu vào (3)
-            window_size: Kích thước cửa sổ
-            filters: Danh sách số filter cho mỗi lớp Conv1D
-            kernel_size: Kích thước kernel
-            pool_size: Kích thước pooling
-            dropout: Tỷ lệ dropout
-            num_classes: Số lớp đầu ra
-        """
-        super(FallDetectionCNN, self).__init__()
-
-        if filters is None:
-            filters = [64, 128]
-
-        layers = []
-        in_channels = input_size
-
-        for out_channels in filters:
-            layers.extend([
-                nn.Conv1d(in_channels, out_channels, kernel_size=kernel_size,
-                          padding=kernel_size // 2),
-                nn.BatchNorm1d(out_channels),
-                nn.ReLU(),
-                nn.MaxPool1d(pool_size),
-                nn.Dropout(dropout),
-            ])
-            in_channels = out_channels
-
-        self.conv_layers = nn.Sequential(*layers)
-
-        # Global Average Pooling
-        self.global_pool = nn.AdaptiveAvgPool1d(1)
-
-        # Fully connected
+    def __init__(self, input_size: int = 3, window_size: int = 100, num_classes: int = 1):
+        super(BiLSTM_CNN, self).__init__()
+        
+        # CNN block
+        self.conv1 = nn.Conv1d(input_size, 9, kernel_size=7, padding=3)
+        self.bn1 = nn.BatchNorm1d(9)
+        self.drop1 = nn.Dropout(0.2)
+        
+        self.conv2 = nn.Conv1d(9, 18, kernel_size=5, padding=2)
+        self.bn2 = nn.BatchNorm1d(18)
+        self.drop2 = nn.Dropout(0.2)
+        
+        self.conv3 = nn.Conv1d(18, 36, kernel_size=3, padding=1)
+        self.bn3 = nn.BatchNorm1d(36)
+        self.drop3 = nn.Dropout(0.2)
+        
+        # Bi-LSTM 1
+        self.lstm1 = nn.LSTM(36, 18, bidirectional=True, batch_first=True)
+        self.ln1 = nn.LayerNorm(36)
+        self.drop_lstm1 = nn.Dropout(0.2)
+        self.att1 = Attention(36, return_sequences=True)
+        
+        # Bi-LSTM 2
+        self.lstm2 = nn.LSTM(36, 36, bidirectional=True, batch_first=True)
+        self.ln2 = nn.LayerNorm(72)
+        self.drop_lstm2 = nn.Dropout(0.2)
+        self.att2 = Attention(72, return_sequences=True)
+        
+        # Bi-LSTM 3
+        self.lstm3 = nn.LSTM(72, 72, bidirectional=True, batch_first=True)
+        self.ln3 = nn.LayerNorm(144)
+        self.drop_lstm3 = nn.Dropout(0.2)
+        
         self.fc = nn.Sequential(
-            nn.Linear(filters[-1], 64),
+            nn.Linear(144, 72),
             nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, num_classes),
+            nn.Linear(72, num_classes),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        """
-        Forward pass.
-
-        Args:
-            x: Input tensor (batch, window_size, input_size)
-        Returns:
-            Output tensor (batch, num_classes)
-        """
-        # Conv1d cần format: (batch, channels, length)
-        x = x.permute(0, 2, 1)
-
-        # Convolutional layers
-        x = self.conv_layers(x)
-
-        # Global Average Pooling
-        x = self.global_pool(x).squeeze(-1)
-
-        # Fully connected
+        x = x.permute(0, 2, 1) # (batch, channels, window)
+        
+        x = self.drop1(self.bn1(torch.relu(self.conv1(x))))
+        x = self.drop2(self.bn2(torch.relu(self.conv2(x))))
+        x = self.drop3(self.bn3(torch.relu(self.conv3(x))))
+        
+        x = x.permute(0, 2, 1) # (batch, window, channels)
+        
+        x, _ = self.lstm1(x)
+        x = self.ln1(x)
+        x = self.drop_lstm1(x)
+        x = self.att1(x)
+        
+        x, _ = self.lstm2(x)
+        x = self.ln2(x)
+        x = self.drop_lstm2(x)
+        x = self.att2(x)
+        
+        _, (h_n, _) = self.lstm3(x)
+        x = torch.cat([h_n[-2], h_n[-1]], dim=1) # Lấy output của step cuối
+        x = self.ln3(x)
+        x = self.drop_lstm3(x)
+        
         x = self.fc(x)
         return x.squeeze(-1)
-
-
-# ============================================================
-# 3. Ensemble Model
-# ============================================================
-
-class EnsembleModel(nn.Module):
-    """
-    Mô hình Ensemble kết hợp LSTM và CNN.
-    Dự đoán cuối cùng = weighted average của 2 mô hình.
-    """
-
-    def __init__(self, lstm_model: StackedLSTM, cnn_model: FallDetectionCNN,
-                 lstm_weight: float = 0.6, cnn_weight: float = 0.4):
-        """
-        Args:
-            lstm_model: Mô hình LSTM đã khởi tạo
-            cnn_model: Mô hình CNN đã khởi tạo
-            lstm_weight: Trọng số cho LSTM
-            cnn_weight: Trọng số cho CNN
-        """
-        super(EnsembleModel, self).__init__()
-        self.lstm = lstm_model
-        self.cnn = cnn_model
-        self.lstm_weight = lstm_weight
-        self.cnn_weight = cnn_weight
-
-    def forward(self, x):
-        """
-        Forward pass.
-        """
-        lstm_out = self.lstm(x)
-        cnn_out = self.cnn(x)
-        return self.lstm_weight * lstm_out + self.cnn_weight * cnn_out
 
 
 # ============================================================
@@ -234,48 +229,22 @@ def build_model(config: dict) -> nn.Module:
             num_classes=num_classes
         )
 
-    elif model_type == 'cnn_1d':
-        cnn_cfg = model_cfg.get('cnn', {})
-        model = FallDetectionCNN(
+    elif model_type == 'lstm':
+        model = LSTM(
             input_size=input_size,
-            window_size=window_size,
-            filters=cnn_cfg.get('filters', [64, 128]),
-            kernel_size=cnn_cfg.get('kernel_size', 3),
-            pool_size=cnn_cfg.get('pool_size', 2),
-            dropout=cnn_cfg.get('dropout', 0.3),
+            hidden_size=64, # match the 64 in kajal's code
             num_classes=num_classes
         )
 
-    elif model_type == 'ensemble':
-        lstm_cfg = model_cfg.get('lstm', {})
-        cnn_cfg = model_cfg.get('cnn', {})
-        ensemble_cfg = model_cfg.get('ensemble', {})
-
-        lstm_model = StackedLSTM(
-            input_size=input_size,
-            hidden_size=lstm_cfg.get('hidden_size', 30),
-            num_layers=lstm_cfg.get('num_layers', 2),
-            dropout=lstm_cfg.get('dropout', 0.3),
-            bidirectional=lstm_cfg.get('bidirectional', False),
-            num_classes=num_classes
-        )
-        cnn_model = FallDetectionCNN(
+    elif model_type == 'bilstm_cnn':
+        model = BiLSTM_CNN(
             input_size=input_size,
             window_size=window_size,
-            filters=cnn_cfg.get('filters', [64, 128]),
-            kernel_size=cnn_cfg.get('kernel_size', 3),
-            pool_size=cnn_cfg.get('pool_size', 2),
-            dropout=cnn_cfg.get('dropout', 0.3),
             num_classes=num_classes
-        )
-        model = EnsembleModel(
-            lstm_model, cnn_model,
-            lstm_weight=ensemble_cfg.get('lstm_weight', 0.6),
-            cnn_weight=ensemble_cfg.get('cnn_weight', 0.4)
         )
 
     else:
         raise ValueError(f"Loại model không hợp lệ: {model_type}. "
-                         f"Chọn: stacked_lstm, cnn_1d, ensemble")
+                         f"Chọn: lstm, stacked_lstm, bilstm_cnn")
 
     return model

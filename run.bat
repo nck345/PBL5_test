@@ -7,7 +7,8 @@ set "PYTHON_EXE=C:\Users\khiem_ssxdm6v\AppData\Local\Python\bin\python.exe"
 if "%~1"=="" (
     echo [Loi] Vui long nhap lenh can chay!
     echo Cac lenh ho tro:
-    echo   .\run.bat train           (Huấn luyện mô hình^)
+    echo   .\run.bat train           (Huấn luyện 1 mô hình^)
+    echo   .\run.bat train_all       (Huấn luyện Benchmark 3 mô hình^)
     echo   .\run.bat test            (Đánh giá mô hình^)
     echo   .\run.bat predict "PATH"  (Dự đoán file/thư mục^)
     exit /b 1
@@ -17,8 +18,12 @@ if "%~1"=="" (
 set "COMMAND=%~1"
 
 if /i "%COMMAND%"=="train" (
-    echo [Thong bao] Dang khoi dong qua trinh Train...
+    echo [Thong bao] Dang khoi dong qua trinh Train 1 model...
     "%PYTHON_EXE%" train.py %2 %3 %4 %5 %6 %7 %8 %9
+
+) else if /i "%COMMAND%"=="train_all" (
+    echo [Thong bao] Dang khoi dong qua trinh Benchmark 3 model...
+    "%PYTHON_EXE%" train_all.py %2 %3 %4 %5 %6 %7 %8 %9
     
 ) else if /i "%COMMAND%"=="test" (
     echo [Thong bao] Dang khoi dong qua trinh Test...
@@ -60,4 +65,10 @@ endlocal
 ::
 :: 6. Quet TOAN BO THU MUC, luu bao cao thanh ten txt chi dinh:
 :: .\run.bat predict "dataset/Raw Data/SCH" bao_cao_tong_ket.txt
+::
+:: 7. Huan luyen 1 mo hinh (thay doi model, so epochs, ep chay du):
+:: .\run.bat train --model lstm --epochs 50 --no-es
+::
+:: 8. Benchmark 3 mo hinh cung luc (ep chay qua thoi diem early stopping):
+:: .\run.bat train_all --epochs 30 --no-es
 :: ======================================================================

@@ -5,13 +5,13 @@ Online Inference - Dự đoán thời gian thực phát hiện té ngã.
 
 Usage:
     # Dự đoán từ file
-    python predict.py --input dataset/Raw\ Data/WAL/WAL_acc_1_1.txt
+    python predict.py --input "dataset/Raw Data/WAL/WAL_acc_1_1.txt"
 
     # Dự đoán từ thư mục (nhiều file)
-    python predict.py --input dataset/Raw\ Data/WAL/
+    python predict.py --input "dataset/Raw Data/WAL/"
 
     # Chế độ streaming simulation
-    python predict.py --input dataset/Raw\ Data/WAL/WAL_acc_1_1.txt --stream
+    python predict.py --input "dataset/Raw Data/WAL/WAL_acc_1_1.txt" --stream
 """
 
 import argparse
@@ -35,9 +35,9 @@ def parse_args():
     )
     parser.add_argument('--config', type=str, default='configs/config.yaml',
                         help='Đường dẫn file cấu hình YAML')
-    parser.add_argument('--model_path', type=str,
-                        default='models/final_model/fall_detection_model.pt',
-                        help='Đường dẫn model đã train')
+    parser.add_argument('--model', type=str, default='stacked_lstm',
+                        choices=['lstm', 'stacked_lstm', 'bilstm_cnn', 'fall_detection_model'],
+                        help='Loại model để dự đoán (ví dụ: lstm, bilstm_cnn)')
     parser.add_argument('--input', type=str, required=True,
                         help='Đường dẫn file hoặc thư mục dữ liệu đầu vào')
     parser.add_argument('--stream', action='store_true',
@@ -278,14 +278,20 @@ def main():
     # ========================================
     # 2. Load model
     # ========================================
-    if not os.path.exists(args.model_path):
-        print(f"\n❌ Không tìm thấy model tại: {args.model_path}")
-        print("   Hãy chạy 'python train.py' trước.")
+    # Cập nhật config model type để build_model hoạt động đúng
+    if args.model != 'fall_detection_model':
+        config['model']['type'] = args.model
+        
+    model_path = os.path.join(config['paths'].get('final_model_dir', 'models/final_model'), f"{args.model}.pt")
+
+    if not os.path.exists(model_path):
+        print(f"\n❌ Không tìm thấy model tại: {model_path}")
+        print("   Hãy chạy 'python train.py' hoặc 'train_all.py' trước.")
         sys.exit(1)
 
-    print(f"🏗️ Đang tải model từ: {args.model_path}")
+    print(f"🏗️ Đang tải model {args.model.upper()} từ: {model_path}")
     model = build_model(config)
-    model, _, _ = Trainer.load_model(model, args.model_path, device)
+    model, _, _ = Trainer.load_model(model, model_path, device)
     print("  ✓ Model đã sẵn sàng!")
 
     # ========================================

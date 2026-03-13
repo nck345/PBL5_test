@@ -24,7 +24,7 @@ data:
 
 # --- Model Settings ---
 model:
-  type: "stacked_lstm"       # "stacked_lstm", "cnn_1d", "ensemble"
+  type: "stacked_lstm"       # "stacked_lstm", "lstm", "bilstm_cnn"
   input_size: 3              # Số kênh đầu vào (x, y, z)
 
   # Stacked LSTM
@@ -33,18 +33,6 @@ model:
     num_layers: 2             # Số tầng LSTM xếp chồng
     dropout: 0.3
     bidirectional: false
-
-  # 1D CNN
-  cnn:
-    filters: [64, 128]       # Số filter mỗi lớp Conv1D
-    kernel_size: 3
-    pool_size: 2
-    dropout: 0.3
-
-  # Ensemble
-  ensemble:
-    lstm_weight: 0.6
-    cnn_weight: 0.4
 
   num_classes: 1              # Binary classification (sigmoid output)
 
