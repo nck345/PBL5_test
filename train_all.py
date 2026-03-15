@@ -15,7 +15,8 @@ import copy
 import torch
 
 from src.utils import load_config, set_seed, get_device, count_parameters, \
-    plot_combined_training_curves, plot_combined_roc_curves, ensure_dir
+    plot_combined_training_curves, plot_combined_roc_curves, \
+    plot_combined_metrics_comparison, ensure_dir
 from src.dataset import prepare_data
 from src.architecture import build_model
 from src.trainer import Trainer
@@ -90,6 +91,7 @@ def main():
     # Chuẩn bị biến chứa kết quả gộp
     all_histories = {}
     all_roc_data = {}
+    all_metrics = {}
     
     models_to_train = ['lstm', 'stacked_lstm', 'bilstm_cnn']
     
@@ -155,6 +157,13 @@ def main():
             'auc': metrics['auc']
         }
         
+        # Lưu lại các metrics khác để vẽ Bar Chart
+        all_metrics[current_model] = {
+            'precision': metrics['precision'],
+            'recall': metrics['recall'],
+            'f1_score': metrics['f1_score']
+        }
+        
         print("="*60)
         
     # ========================================
@@ -172,6 +181,12 @@ def main():
         all_roc_data,
         title="So sánh ROC/AUC trên tập Test",
         save_path=os.path.join(results_dir, 'combined_roc_curves.png')
+    )
+    
+    plot_combined_metrics_comparison(
+        all_metrics,
+        title="So sánh Precision, Recall, F1-Score",
+        save_path=os.path.join(results_dir, 'model_metrics_comparison.png')
     )
     
     print(f"\n✅ ĐÃ HOÀN TẤT CHUỖI BENCHMARK.")

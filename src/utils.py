@@ -399,6 +399,54 @@ def ensure_dir(path: str):
     os.makedirs(path, exist_ok=True)
 
 
+def plot_combined_metrics_comparison(all_metrics: dict, 
+                                     title: str = "Model Metrics Comparison",
+                                     save_path: str = None):
+    """
+    Vẽ biểu đồ cột so sánh các metrics (Precision, Recall, F1) giữa các mô hình.
+
+    Args:
+        all_metrics: Dict dạng {model_name: {'precision': p, 'recall': r, 'f1_score': f1}}
+        title: Tiêu đề
+        save_path: Đường dẫn lưu ảnh
+    """
+    model_names = list(all_metrics.keys())
+    metrics_names = ['precision', 'recall', 'f1_score']
+    
+    # Chuẩn bị dữ liệu cho bar chart
+    data = []
+    for m_name in model_names:
+        row = [all_metrics[m_name].get(met, 0) for met in metrics_names]
+        data.append(row)
+    
+    data = np.array(data)
+    
+    x = np.arange(len(metrics_names))  # vị trí của các nhóm metrics
+    width = 0.8 / len(model_names)      # độ rộng của mỗi cột
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    for i, m_name in enumerate(model_names):
+        offset = (i - (len(model_names) - 1) / 2) * width
+        rects = ax.bar(x + offset, data[i], width, label=m_name)
+        ax.bar_label(rects, padding=3, fmt='%.3f', fontsize=9)
+
+    ax.set_ylabel('Score (0-1)')
+    ax.set_title(title)
+    ax.set_xticks(x)
+    ax.set_xticklabels([m.capitalize() for m in metrics_names])
+    ax.set_ylim(0, 1.1)
+    ax.legend(loc='lower right')
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
 def count_parameters(model) -> int:
     """Đếm số tham số huấn luyện được của model."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
