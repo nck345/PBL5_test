@@ -158,7 +158,7 @@ def load_all_data(raw_data_dir: str, sensor_type: str = "acc",
     if verbose:
         n_fall = sum(1 for l in all_labels if l == 1)
         n_adl = sum(1 for l in all_labels if l == 0)
-        print(f"\nTổng: {len(all_segments)} recordings "
+        print(f"\nTotal: {len(all_segments)} recordings "
               f"({n_adl} ADL, {n_fall} Fall)")
 
     return all_segments, all_labels, all_subjects

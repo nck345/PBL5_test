@@ -389,6 +389,59 @@ def plot_combined_roc_curves(all_roc_data: dict,
     plt.close()
 
 
+def plot_combined_confusion_matrices(all_metrics: dict, class_names: list = None,
+                                     title: str = "Combined Confusion Matrices",
+                                     save_path: str = None):
+    """
+    Vẽ biểu đồ Confusion Matrix chung cho nhiều mô hình trên cùng một mảng (1 x n_models).
+
+    Args:
+        all_metrics: Dict dạng {model_name: {'confusion_matrix': cm}}
+        class_names: Tên các lớp
+        title: Tiêu đề biểu đồ
+        save_path: Đường dẫn lưu ảnh
+    """
+    if class_names is None:
+        class_names = ['ADL', 'Fall']
+
+    model_names = list(all_metrics.keys())
+    n_models = len(model_names)
+    
+    if n_models == 0:
+        return
+
+    # Tính toán global_vmax để dải màu thống nhất
+    all_cm = [all_metrics[m].get('confusion_matrix') for m in model_names if 'confusion_matrix' in all_metrics[m]]
+    if not all_cm:
+        return
+    global_vmax = max(cm.max() for cm in all_cm)
+
+    fig, axes = plt.subplots(1, n_models, figsize=(5 * n_models + 1, 5))
+    if n_models == 1:
+        axes = [axes]
+
+    for i, m_name in enumerate(model_names):
+        cm = all_metrics[m_name].get('confusion_matrix')
+        if cm is None:
+            continue
+            
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', vmin=0, vmax=global_vmax,
+                    xticklabels=class_names, yticklabels=class_names,
+                    square=True, linewidths=0.5, ax=axes[i], cbar=(i == n_models - 1))
+        axes[i].set_xlabel('Predicted')
+        if i == 0:
+            axes[i].set_ylabel('Actual')
+        axes[i].set_title(f"{m_name.upper()}")
+
+    plt.suptitle(title, fontsize=14, y=1.05)
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
 
 # ============================================================
 # 6. Miscellaneous

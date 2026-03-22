@@ -7,7 +7,7 @@ Tạo biểu đồ cột so sánh các mô hình đã huấn luyện.
 import os
 import torch
 import copy
-from src.utils import load_config, get_device, plot_combined_metrics_comparison, ensure_dir
+from src.utils import load_config, get_device, plot_combined_metrics_comparison, ensure_dir, plot_combined_confusion_matrices
 from src.dataset import prepare_data
 from src.architecture import build_model
 from src.evaluator import Evaluator
@@ -62,7 +62,8 @@ def main():
         all_metrics[m_type] = {
             'precision': metrics['precision'],
             'recall': metrics['recall'],
-            'f1_score': metrics['f1_score']
+            'f1_score': metrics['f1_score'],
+            'confusion_matrix': metrics['confusion_matrix']
         }
         
         print(f"   Precision: {metrics['precision']:.4f}")
@@ -80,6 +81,15 @@ def main():
         print("-" * 50)
         print(f"✅ Đã tạo xong biểu đồ cột so sánh!")
         print(f"📁 Đường dẫn: {save_path}")
+        
+        cm_save_path = os.path.join(results_dir, 'model_combined_confusion_matrix_current.png')
+        plot_combined_confusion_matrices(
+            all_metrics,
+            title="So sánh Confusion Matrix (Tất cả Model)",
+            save_path=cm_save_path
+        )
+        print(f"✅ Đã tạo xong biểu đồ kết hợp 3 Confusion Matrix!")
+        print(f"📁 Đường dẫn: {cm_save_path}")
     else:
         print("\n❌ Không có model nào được đánh giá thành công.")
 

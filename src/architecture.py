@@ -110,7 +110,7 @@ class StackedLSTM(nn.Module):
 
 
 # ============================================================
-# 3. BiLSTM_CNN (Cải tiến dựa trên Kaggle/Tham khảo)
+# 3. BiLSTM_CNN
 # ============================================================
 
 class Attention(nn.Module):
@@ -128,9 +128,6 @@ class Attention(nn.Module):
         return torch.sum(output, dim=1)
 
 class BiLSTM_CNN(nn.Module):
-    """
-    Mô hình lai CNN + BiLSTM + Attention lấy cảm hứng từ repo Kajal.
-    """
     def __init__(self, input_size: int = 3, window_size: int = 100, num_classes: int = 1):
         super(BiLSTM_CNN, self).__init__()
         
