@@ -23,7 +23,7 @@ def main():
     test_loader = data['test_loader']
     
     # 3. Danh sách model cần kiểm tra
-    models_to_compare = ['lstm', 'stacked_lstm', 'bilstm_cnn']
+    models_to_compare = ['lstm', 'stacked_lstm', 'ensemble_lstm']
     model_dir = config['paths'].get('final_model_dir', 'models/final_model')
     results_dir = os.path.join(config['paths'].get('log_dir', 'logs'), 'results')
     ensure_dir(results_dir)

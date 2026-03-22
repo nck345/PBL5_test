@@ -9,7 +9,7 @@ import glob
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, Subset
 from sklearn.model_selection import train_test_split
 
 from .utils import apply_lowpass_filter, get_scaler, normalize_data, load_config
@@ -504,3 +504,36 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
         'scaler': loaders['scaler'],
         'splits': splits,
     }
+
+
+# ============================================================
+# 7. Phân chia dữ liệu Ensemble (Dành cho Stacking)
+# ============================================================
+
+def get_ensemble_subsets(dataset: Dataset, num_models: int, overlap_ratio: float = 0.15) -> list:
+    """
+    Chia dataset gốc (train_dataset) thành `num_models` tập con (Subsets).
+    Giữa các tập con kế tiếp có `overlap_ratio` phần trăm dữ liệu trùng lặp.
+    Chiến lược này (Heap Strategy) giúp các mô hình cơ sở học được các khía cạnh 
+    vừa độc lập vừa tương đồng của dữ liệu.
+    """
+    total_len = len(dataset)
+    if num_models <= 1:
+        return [dataset]
+        
+    scale_factor = (num_models - 1) * (1.0 - overlap_ratio) + 1.0
+    segment_size = int(total_len / scale_factor)
+    step_size = int(segment_size * (1.0 - overlap_ratio))
+    
+    subsets = []
+    for i in range(num_models):
+        start_idx = i * step_size
+        end_idx = start_idx + segment_size
+        
+        if i == num_models - 1:
+            end_idx = total_len 
+            
+        indices = list(range(start_idx, min(end_idx, total_len)))
+        subsets.append(Subset(dataset, indices))
+        
+    return subsets

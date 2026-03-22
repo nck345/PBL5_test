@@ -34,7 +34,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=None,
                         help='Learning rate (ghi đè config)')
     parser.add_argument('--model', type=str, default=None,
-                        choices=['lstm', 'stacked_lstm', 'bilstm_cnn'],
+                        choices=['lstm', 'stacked_lstm', 'ensemble_lstm'],
                         help='Loại model (ghi đè config)')
     parser.add_argument('--device', type=str, default=None,
                         help='Device: auto, cpu, cuda')

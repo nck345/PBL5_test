@@ -109,95 +109,55 @@ class StackedLSTM(nn.Module):
         return out.squeeze(-1)
 
 
+
 # ============================================================
-# 3. BiLSTM_CNN
+# 4. Ensemble LSTM (Stacking)
 # ============================================================
 
-class Attention(nn.Module):
-    def __init__(self, hidden_size, return_sequences=True):
-        super(Attention, self).__init__()
-        self.return_sequences = return_sequences
-        self.W = nn.Linear(hidden_size, 1, bias=True)
-
-    def forward(self, x):
-        e = torch.tanh(self.W(x))
-        a = torch.softmax(e, dim=1)
-        output = x * a
-        if self.return_sequences:
-            return output
-        return torch.sum(output, dim=1)
-
-class BiLSTM_CNN(nn.Module):
-    def __init__(self, input_size: int = 3, window_size: int = 100, num_classes: int = 1):
-        super(BiLSTM_CNN, self).__init__()
+class EnsembleLSTM(nn.Module):
+    """
+    Mô hình Stacked Ensemble LSTM dựa theo kỹ thuật Heap Strategy.
+    Kết hợp dự đoán của nhiều mô hình StackedLSTM cơ sở qua một Meta-Classifier.
+    """
+    def __init__(self, num_models=3, input_size=3, hidden_size=30, num_layers=2, dropout=0.3, bidirectional=False, num_classes=1):
+        super(EnsembleLSTM, self).__init__()
+        self.num_models = num_models
         
-        # CNN block
-        self.conv1 = nn.Conv1d(input_size, 9, kernel_size=7, padding=3)
-        self.bn1 = nn.BatchNorm1d(9)
-        self.drop1 = nn.Dropout(0.2)
+        # Tạo danh sách các mô hình cơ sở độc lập
+        self.base_models = nn.ModuleList([
+            StackedLSTM(input_size, hidden_size, num_layers, dropout, bidirectional, num_classes)
+            for _ in range(num_models)
+        ])
         
-        self.conv2 = nn.Conv1d(9, 18, kernel_size=5, padding=2)
-        self.bn2 = nn.BatchNorm1d(18)
-        self.drop2 = nn.Dropout(0.2)
-        
-        self.conv3 = nn.Conv1d(18, 36, kernel_size=3, padding=1)
-        self.bn3 = nn.BatchNorm1d(36)
-        self.drop3 = nn.Dropout(0.2)
-        
-        # Bi-LSTM 1
-        self.lstm1 = nn.LSTM(36, 18, bidirectional=True, batch_first=True)
-        self.ln1 = nn.LayerNorm(36)
-        self.drop_lstm1 = nn.Dropout(0.2)
-        self.att1 = Attention(36, return_sequences=True)
-        
-        # Bi-LSTM 2
-        self.lstm2 = nn.LSTM(36, 36, bidirectional=True, batch_first=True)
-        self.ln2 = nn.LayerNorm(72)
-        self.drop_lstm2 = nn.Dropout(0.2)
-        self.att2 = Attention(72, return_sequences=True)
-        
-        # Bi-LSTM 3
-        self.lstm3 = nn.LSTM(72, 72, bidirectional=True, batch_first=True)
-        self.ln3 = nn.LayerNorm(144)
-        self.drop_lstm3 = nn.Dropout(0.2)
-        
-        self.fc = nn.Sequential(
-            nn.Linear(144, 72),
+        # Meta-classifier: học cách kết hợp kết quả của các model cơ sở
+        # Đầu vào là output probability của N models
+        meta_input_size = num_models * num_classes
+        self.meta_classifier = nn.Sequential(
+            nn.Linear(meta_input_size, max(num_models, 4)), 
             nn.ReLU(),
-            nn.Linear(72, num_classes),
+            nn.Linear(max(num_models, 4), num_classes),
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        x = x.permute(0, 2, 1) # (batch, channels, window)
+        """
+        Forward pass toàn bộ Ensemble (Dùng lúc Test/Inference).
+        """
+        base_outputs = []
+        for model in self.base_models:
+            # Output model(x) dạng (batch,)
+            out = model(x) 
+            base_outputs.append(out.unsqueeze(1))
+            
+        # Ghép kết quả: (batch, num_models)
+        meta_input = torch.cat(base_outputs, dim=1)
         
-        x = self.drop1(self.bn1(torch.relu(self.conv1(x))))
-        x = self.drop2(self.bn2(torch.relu(self.conv2(x))))
-        x = self.drop3(self.bn3(torch.relu(self.conv3(x))))
-        
-        x = x.permute(0, 2, 1) # (batch, window, channels)
-        
-        x, _ = self.lstm1(x)
-        x = self.ln1(x)
-        x = self.drop_lstm1(x)
-        x = self.att1(x)
-        
-        x, _ = self.lstm2(x)
-        x = self.ln2(x)
-        x = self.drop_lstm2(x)
-        x = self.att2(x)
-        
-        _, (h_n, _) = self.lstm3(x)
-        x = torch.cat([h_n[-2], h_n[-1]], dim=1) # Lấy output của step cuối
-        x = self.ln3(x)
-        x = self.drop_lstm3(x)
-        
-        x = self.fc(x)
-        return x.squeeze(-1)
-
+        # Phân loại cuối cùng
+        meta_out = self.meta_classifier(meta_input)
+        return meta_out.squeeze(-1)
 
 # ============================================================
-# 4. Factory Function
+# 5. Factory Function
 # ============================================================
 
 def build_model(config: dict) -> nn.Module:
@@ -233,15 +193,22 @@ def build_model(config: dict) -> nn.Module:
             num_classes=num_classes
         )
 
-    elif model_type == 'bilstm_cnn':
-        model = BiLSTM_CNN(
+    elif model_type == 'ensemble_lstm':
+        ensemble_cfg = model_cfg.get('ensemble', {})
+        lstm_cfg = model_cfg.get('lstm', {})
+        model = EnsembleLSTM(
+            num_models=ensemble_cfg.get('num_models', 3),
             input_size=input_size,
-            window_size=window_size,
+            hidden_size=lstm_cfg.get('hidden_size', 30),
+            num_layers=lstm_cfg.get('num_layers', 2),
+            dropout=lstm_cfg.get('dropout', 0.3),
+            bidirectional=lstm_cfg.get('bidirectional', False),
             num_classes=num_classes
         )
 
     else:
         raise ValueError(f"Loại model không hợp lệ: {model_type}. "
-                         f"Chọn: lstm, stacked_lstm, bilstm_cnn")
+                         f"Chọn: lstm, stacked_lstm, ensemble_lstm")
 
     return model
+

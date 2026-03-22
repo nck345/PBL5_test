@@ -110,7 +110,7 @@ class Trainer:
         total = 0
 
         # Thay vì chèn đè lên tất cả, ta cho pbar chạy động và xóa khi xong
-        pbar = tqdm(train_loader, desc=f"Train", leave=False, dynamic_ncols=True) if verbose else train_loader
+        pbar = tqdm(train_loader, desc=f"Train [{epoch}/{self.epochs}]", leave=False, dynamic_ncols=True) if verbose else train_loader
 
         for X_batch, y_batch in pbar:
             X_batch = X_batch.to(self.device)
@@ -151,7 +151,7 @@ class Trainer:
         correct = 0
         total = 0
 
-        pbar = tqdm(val_loader, desc=f"Val  ", leave=False, dynamic_ncols=True) if verbose else val_loader
+        pbar = tqdm(val_loader, desc=f"Val   [{epoch}/{self.epochs}]", leave=False, dynamic_ncols=True) if verbose else val_loader
 
         for X_batch, y_batch in pbar:
             X_batch = X_batch.to(self.device)
@@ -203,66 +203,71 @@ class Trainer:
                   f"Early Stopping: {self.early_stopping_enabled}")
             print(f"{'='*60}\n")
 
-        for epoch in range(1, self.epochs + 1):
-            epoch_start = time.time()
+        try:
+            for epoch in range(1, self.epochs + 1):
+                epoch_start = time.time()
 
-            # Train
-            train_loss, train_acc = self._train_one_epoch(train_loader, epoch, verbose)
+                # Train
+                train_loss, train_acc = self._train_one_epoch(train_loader, epoch, verbose)
 
-            # Validate
-            val_loss, val_acc = self._validate(val_loader, epoch, verbose)
+                # Validate
+                val_loss, val_acc = self._validate(val_loader, epoch, verbose)
 
-            # Lưu history
-            current_lr = self.optimizer.param_groups[0]['lr']
-            self.history['train_loss'].append(train_loss)
-            self.history['val_loss'].append(val_loss)
-            self.history['train_acc'].append(train_acc)
-            self.history['val_acc'].append(val_acc)
-            self.history['lr'].append(current_lr)
+                # Lưu history
+                current_lr = self.optimizer.param_groups[0]['lr']
+                self.history['train_loss'].append(train_loss)
+                self.history['val_loss'].append(val_loss)
+                self.history['train_acc'].append(train_acc)
+                self.history['val_acc'].append(val_acc)
+                self.history['lr'].append(current_lr)
 
-            epoch_time = time.time() - epoch_start
-            
-            # Khóa tự in dòng mới liên tục, dùng carriage return (\r) thay thế
-            if verbose:
-                # Xóa dòng cũ nếu có
-                sys.stdout.write('\033[K') 
-                print(f"Epoch [{epoch:3d}/{self.epochs}] "
-                      f"| Train Loss: {train_loss:.4f} Acc: {train_acc:.2f}% "
-                      f"| Val Loss: {val_loss:.4f} Acc: {val_acc:.2f}% "
-                      f"| LR: {current_lr:.6f} "
-                      f"| Time: {epoch_time:.1f}s")
+                epoch_time = time.time() - epoch_start
+                
+                # Khóa tự in dòng mới liên tục, dùng carriage return (\r) thay thế
+                if verbose:
+                    # Xóa dòng cũ nếu có
+                    sys.stdout.write('\033[K') 
+                    print(f"Epoch [{epoch:3d}/{self.epochs}] "
+                          f"| Train Loss: {train_loss:.4f} Acc: {train_acc:.2f}% "
+                          f"| Val Loss: {val_loss:.4f} Acc: {val_acc:.2f}% "
+                          f"| LR: {current_lr:.6f} "
+                          f"| Time: {epoch_time:.1f}s")
 
-            # Learning rate scheduling
-            if self.scheduler is not None:
-                if isinstance(self.scheduler, ReduceLROnPlateau):
-                    self.scheduler.step(val_loss)
+                # Learning rate scheduling
+                if self.scheduler is not None:
+                    if isinstance(self.scheduler, ReduceLROnPlateau):
+                        self.scheduler.step(val_loss)
+                    else:
+                        self.scheduler.step()
+
+                # Save best model
+                if val_loss < best_val_loss - self.es_min_delta:
+                    best_val_loss = val_loss
+                    best_model_state = copy.deepcopy(self.model.state_dict())
+                    patience_counter = 0
+
+                    # Save checkpoint
+                    model_type = self.config.get('model', {}).get('type', 'model')
+                    checkpoint_path = os.path.join(
+                        self.checkpoint_dir,
+                        f"{model_type}_epoch{epoch}.pt"
+                    )
+                    self._save_checkpoint(epoch, val_loss, val_acc, checkpoint_path)
+
+                    if verbose:
+                        print(f"  -> Saved best checkpoint (val_loss: {val_loss:.4f})")
                 else:
-                    self.scheduler.step()
+                    patience_counter += 1
 
-            # Save best model
-            if val_loss < best_val_loss - self.es_min_delta:
-                best_val_loss = val_loss
-                best_model_state = copy.deepcopy(self.model.state_dict())
-                patience_counter = 0
-
-                # Save checkpoint
-                checkpoint_path = os.path.join(
-                    self.checkpoint_dir,
-                    f"best_model_epoch{epoch}.pt"
-                )
-                self._save_checkpoint(epoch, val_loss, val_acc, checkpoint_path)
-
-                if verbose:
-                    print(f"  -> Saved best checkpoint (val_loss: {val_loss:.4f})")
-            else:
-                patience_counter += 1
-
-            # Early stopping
-            if self.early_stopping_enabled and patience_counter >= self.es_patience:
-                if verbose:
-                    print(f"\n! Early stopping at epoch {epoch} "
-                          f"(patience={self.es_patience})")
-                break
+                # Early stopping
+                if self.early_stopping_enabled and patience_counter >= self.es_patience:
+                    if verbose:
+                        print(f"\n! Early stopping at epoch {epoch} "
+                              f"(patience={self.es_patience})")
+                    break
+        except KeyboardInterrupt:
+            if verbose:
+                print("\n! Training interrupted by user (KeyboardInterrupt). Evaluating best model so far...")
 
         # Load best model
         if best_model_state is not None:

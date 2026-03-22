@@ -20,6 +20,7 @@ from src.utils import load_config, set_seed, get_device, count_parameters, \
 from src.dataset import prepare_data
 from src.architecture import build_model
 from src.trainer import Trainer
+from src.ensemble_trainer import EnsembleTrainer
 from src.evaluator import Evaluator
 
 
@@ -93,7 +94,7 @@ def main():
     all_roc_data = {}
     all_metrics = {}
     
-    models_to_train = ['lstm', 'stacked_lstm', 'bilstm_cnn']
+    models_to_train = ['lstm', 'stacked_lstm', 'ensemble_lstm']
     
     print(f"\nSTARTING TRAINING SEQUENCE: {models_to_train}\n")
     print("="*60)
@@ -119,7 +120,10 @@ def main():
         print(f"  Total parameters: {n_params:,}")
         
         # Train
-        trainer = Trainer(model, config, device)
+        if current_model == 'ensemble_lstm':
+            trainer = EnsembleTrainer(model, config, device)
+        else:
+            trainer = Trainer(model, config, device)
         history = trainer.train(train_loader, val_loader, verbose=True)
         all_histories[current_model] = history
         
@@ -131,6 +135,13 @@ def main():
             if os.path.exists(model_save_path):
                 os.remove(model_save_path)
             os.rename(temp_save_path, model_save_path)
+        
+        # Nếu dùng EnsembleTrainer, nó có thể đã lưu thẳng với đuôi .pth
+        ensemble_save_path = os.path.join(final_model_dir, f"{current_model}.pth")
+        if os.path.exists(ensemble_save_path):
+            if os.path.exists(model_save_path):
+                os.remove(model_save_path)
+            os.rename(ensemble_save_path, model_save_path)
 
         # Cập nhật state_dict tốt nhất vào model để Test
         checkpoint = torch.load(model_save_path, map_location=device, weights_only=True)

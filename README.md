@@ -16,6 +16,8 @@ python train.py --model lstm --epochs 50 --no-es
 Benchmark 3 mô hình cùng lúc (ép chạy bỏ qua Early Stopping nếu cần):
 python train_all.py --epochs 30 --no-es
 
+**Trong lúc train, nếu muốn early stopping thì nhấn Ctrl + C**
+
 ### 2. Đánh giá mô hình (Test)
 
 Đánh giá 1 mô hình đã huấn luyện:

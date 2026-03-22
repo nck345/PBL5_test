@@ -36,8 +36,8 @@ def parse_args():
     parser.add_argument('--config', type=str, default='configs/config.yaml',
                         help='Đường dẫn file cấu hình YAML')
     parser.add_argument('--model', type=str, default='stacked_lstm',
-                        choices=['lstm', 'stacked_lstm', 'bilstm_cnn', 'fall_detection_model'],
-                        help='Loại model để dự đoán (ví dụ: lstm, bilstm_cnn)')
+                        choices=['lstm', 'stacked_lstm', 'ensemble_lstm', 'fall_detection_model'],
+                        help='Loại model để dự đoán (ví dụ: lstm, ensemble_lstm)')
     parser.add_argument('--input', type=str, required=True,
                         help='Đường dẫn file hoặc thư mục dữ liệu đầu vào')
     parser.add_argument('--stream', action='store_true',
