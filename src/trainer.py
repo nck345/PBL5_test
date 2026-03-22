@@ -48,7 +48,13 @@ class Trainer:
         self.lr = train_cfg.get('learning_rate', 0.001)
         self.weight_decay = train_cfg.get('weight_decay', 0.0001)
 
-        # Loss function
+        # Tính toán pos_weight cho BCELoss (hoặc tự nhân manual trong vòng lặp)
+        # Vì model đầu ra có Sigmoid, ta vẫn dụng BCELoss.
+        # Nhưng thay vì xài parameter weight không có của BCELoss, ta dùng thuộc tính nội bộ.
+        # Ở đây, BCELoss truyền thống cũng có param "weight" cho từng minibatch element.
+        # Hoặc dùng weight cố định cho class = 1 (mặc dù nn.BCELoss không có pos_weight như BCEWithLogitsLoss)
+        # Giải pháp tốt nhất: WeightedRandomSampler đã đổi data, loss ko nhất thiết cần pos_weight nữa.
+        # Để an toàn, cứ giữ BCELoss nguyên bản vì sampler đã lo vụ balance 50/50 rồi.
         self.criterion = nn.BCELoss()
 
         # Optimizer
@@ -192,7 +198,7 @@ class Trainer:
 
         if verbose:
             print(f"\n{'='*60}")
-            print(f"Bắt đầu huấn luyện trên {self.device}")
+            print(f"Starting training on {self.device}")
             print(f"Epochs: {self.epochs} | LR: {self.lr} | "
                   f"Early Stopping: {self.early_stopping_enabled}")
             print(f"{'='*60}\n")
@@ -247,14 +253,14 @@ class Trainer:
                 self._save_checkpoint(epoch, val_loss, val_acc, checkpoint_path)
 
                 if verbose:
-                    print(f"  → Lưu checkpoint tốt nhất (val_loss: {val_loss:.4f})")
+                    print(f"  -> Saved best checkpoint (val_loss: {val_loss:.4f})")
             else:
                 patience_counter += 1
 
             # Early stopping
             if self.early_stopping_enabled and patience_counter >= self.es_patience:
                 if verbose:
-                    print(f"\n⚠ Early stopping tại epoch {epoch} "
+                    print(f"\n! Early stopping at epoch {epoch} "
                           f"(patience={self.es_patience})")
                 break
 
@@ -269,10 +275,10 @@ class Trainer:
         total_time = time.time() - start_time
         if verbose:
             print(f"\n{'='*60}")
-            print(f"Hoàn thành huấn luyện!")
-            print(f"Tổng thời gian: {total_time:.1f}s")
+            print(f"Training Complete!")
+            print(f"Total time: {total_time:.1f}s")
             print(f"Best Val Loss: {best_val_loss:.4f}")
-            print(f"Model đã lưu tại: {final_path}")
+            print(f"Model saved to: {final_path}")
             print(f"{'='*60}")
 
         return self.history

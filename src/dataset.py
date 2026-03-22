@@ -9,7 +9,7 @@ import glob
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from sklearn.model_selection import train_test_split
 
 from .utils import apply_lowpass_filter, get_scaler, normalize_data, load_config
@@ -395,9 +395,27 @@ def create_dataloaders(splits: dict, config: dict, scaler=None) -> dict:
         scaler=fitted_scaler, fit_scaler=False
     )
 
-    # Tạo DataLoaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                              shuffle=True, drop_last=False, num_workers=0)
+    # Tính toán weight cho imbalanced data
+    use_sampler = config.get('training', {}).get('use_sampler', True)
+    if use_sampler:
+        # Tự động tính weight dựa trên số mẫu hiện tại
+        class_counts = [np.sum(splits['y_train'] == 0), np.sum(splits['y_train'] == 1)]
+        total_samples = len(splits['y_train'])
+        class_weights = [total_samples / c if c > 0 else 0 for c in class_counts]
+        
+        sample_weights = [class_weights[int(label)] for label in splits['y_train']]
+        sampler = WeightedRandomSampler(
+            weights=sample_weights, 
+            num_samples=total_samples, 
+            replacement=True
+        )
+        
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  sampler=sampler, drop_last=False, num_workers=0)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                                  shuffle=True, drop_last=False, num_workers=0)
+
     val_loader = DataLoader(val_dataset, batch_size=batch_size,
                             shuffle=False, drop_last=False, num_workers=0)
     test_loader = DataLoader(test_dataset, batch_size=batch_size,

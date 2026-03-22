@@ -48,7 +48,7 @@ def main():
     # ========================================
     # 1. Load config
     # ========================================
-    print("📁 Đang tải cấu hình...")
+    print("Loading configuration...")
     base_config = load_config(args.config)
 
     # Ghi đè config bằng command-line args
@@ -71,17 +71,17 @@ def main():
     set_seed(seed)
     device = get_device(base_config.get('device', 'auto'))
 
-    print(f"🔧 Device: {device}")
-    print(f"🔧 Seed: {seed}")
+    print(f"Device: {device}")
+    print(f"Seed: {seed}")
 
     # ========================================
     # 3. Chuẩn bị dữ liệu chung
     # ========================================
-    print("\n📊 Đang chuẩn bị dữ liệu chung cho tất cả model...")
+    print("\nPreparing data for all models...")
     try:
         data = prepare_data(base_config, verbose=False)
     except ValueError as e:
-        print(f"\n❌ Lỗi: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)
 
     train_loader = data['train_loader']
@@ -95,7 +95,7 @@ def main():
     
     models_to_train = ['lstm', 'stacked_lstm', 'bilstm_cnn']
     
-    print(f"\n🚀 BẮT ĐẦU CHUỖI HUẤN LUYỆN: {models_to_train}\n")
+    print(f"\nSTARTING TRAINING SEQUENCE: {models_to_train}\n")
     print("="*60)
 
     # ========================================
@@ -107,7 +107,7 @@ def main():
     ensure_dir(final_model_dir)
 
     for current_model in models_to_train:
-        print(f"\n▶️ ĐANG HUẤN LUYỆN MODEL: {current_model.upper()}")
+        print(f"\nTRAINING MODEL: {current_model.upper()}")
         
         # Sửa cấu hình để Load đúng Model
         config = copy.deepcopy(base_config)
@@ -116,7 +116,7 @@ def main():
         # Build Model
         model = build_model(config)
         n_params = count_parameters(model)
-        print(f"  Tổng tham số: {n_params:,}")
+        print(f"  Total parameters: {n_params:,}")
         
         # Train
         trainer = Trainer(model, config, device)
@@ -140,7 +140,7 @@ def main():
             model.load_state_dict(checkpoint)
         
         # Đánh giá Model trên tập Test để lấy ROC curve
-        print(f"\n🧪 Đánh giá {current_model.upper()} trên tập Test...")
+        print(f"\nEvaluating {current_model.upper()} on Test set...")
         evaluator = Evaluator(model, device)
         y_true, y_pred, y_proba = evaluator.predict(test_loader)
         metrics = evaluator._compute_metrics(y_true, y_pred, y_proba)
@@ -169,29 +169,29 @@ def main():
     # ========================================
     # 5. Vẽ biểu đồ so sánh gộp
     # ========================================
-    print("\n📈 Đang vẽ biểu đồ so sánh chung...")
+    print("\nDrawing combined comparison charts...")
     
     plot_combined_training_curves(
         all_histories,
-        title="So sánh Huấn luyện (Validation)",
+        title="Training Comparison (Validation)",
         save_path=os.path.join(results_dir, 'combined_training_curves.png')
     )
     
     plot_combined_roc_curves(
         all_roc_data,
-        title="So sánh ROC/AUC trên tập Test",
+        title="ROC/AUC Comparison on Test Set",
         save_path=os.path.join(results_dir, 'combined_roc_curves.png')
     )
     
     plot_combined_metrics_comparison(
         all_metrics,
-        title="So sánh Precision, Recall, F1-Score",
+        title="Precision, Recall, F1-Score Comparison",
         save_path=os.path.join(results_dir, 'model_metrics_comparison.png')
     )
     
-    print(f"\n✅ ĐÃ HOÀN TẤT CHUỖI BENCHMARK.")
-    print(f"📁 Biểu đồ so sánh   : {results_dir}")
-    print(f"📁 Các file trọng số : {final_model_dir}")
+    print(f"\nBENCHMARK COMPLETE.")
+    print(f"Comparison charts: {results_dir}")
+    print(f"Weight files     : {final_model_dir}")
 
 
 if __name__ == '__main__':
