@@ -18,6 +18,7 @@ from src.utils import load_config, set_seed, get_device, count_parameters, \
 from src.dataset import prepare_data
 from src.architecture import build_model
 from src.trainer import Trainer
+from src.ensemble_trainer import EnsembleTrainer
 from src.evaluator import quick_evaluate
 
 
@@ -105,7 +106,10 @@ def main():
     # ========================================
     # 5. Huấn luyện
     # ========================================
-    trainer = Trainer(model, config, device)
+    if config['model']['type'] == 'ensemble_lstm':
+        trainer = EnsembleTrainer(model, config, device)
+    else:
+        trainer = Trainer(model, config, device)
     history = trainer.train(train_loader, val_loader, verbose=True)
 
     # ========================================
@@ -114,7 +118,9 @@ def main():
     print("\n🧪 Đánh giá trên tập Test...")
     results_dir = os.path.join(config['paths'].get('log_dir', 'logs'), 'results')
     metrics = quick_evaluate(model, test_loader, device,
-                             verbose=True, save_dir=results_dir)
+                             verbose=True, save_dir=results_dir,
+                             optimize_threshold=False,
+                             threshold=config['model'].get('threshold', 0.5))
 
     # ========================================
     # 7. Vẽ biểu đồ training

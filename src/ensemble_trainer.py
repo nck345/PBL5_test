@@ -32,6 +32,9 @@ class EnsembleTrainer:
         
         self.num_models = config.get('model', {}).get('ensemble', {}).get('num_models', 3)
         self.overlap_ratio = config.get('model', {}).get('ensemble', {}).get('overlap_ratio', 0.15)
+        self.meta_train_ratio = config.get('model', {}).get('ensemble', {}).get('meta_train_ratio', 0.25)
+        self.meta_epochs = config.get('model', {}).get('ensemble', {}).get('meta_epochs', self.epochs)
+        self.meta_lr = config.get('model', {}).get('ensemble', {}).get('meta_learning_rate', 0.0005)
         
         # Paths
         paths_cfg = config.get('paths', {})
@@ -59,13 +62,16 @@ class EnsembleTrainer:
             'lr': []
         }
 
-    def _create_optimizer_and_scheduler(self, parameters):
+    def _create_optimizer_and_scheduler(self, parameters, is_meta=False):
+        lr = self.meta_lr if is_meta else self.lr
+        epochs = self.meta_epochs if is_meta else self.epochs
+        
         if self.optimizer_name == 'adam':
-            optimizer = Adam(parameters, lr=self.lr, weight_decay=self.weight_decay)
+            optimizer = Adam(parameters, lr=lr, weight_decay=self.weight_decay)
         elif self.optimizer_name == 'sgd':
-            optimizer = SGD(parameters, lr=self.lr, momentum=0.9, weight_decay=self.weight_decay)
+            optimizer = SGD(parameters, lr=lr, momentum=0.9, weight_decay=self.weight_decay)
         else:
-            optimizer = Adam(parameters, lr=self.lr)
+            optimizer = Adam(parameters, lr=lr)
 
         if self.sched_type == 'reduce_on_plateau':
             scheduler = ReduceLROnPlateau(
@@ -76,7 +82,7 @@ class EnsembleTrainer:
         elif self.sched_type == 'step':
             scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
         elif self.sched_type == 'cosine':
-            scheduler = CosineAnnealingLR(optimizer, T_max=self.epochs)
+            scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
         else:
             scheduler = None
         
@@ -84,11 +90,28 @@ class EnsembleTrainer:
 
     def train(self, global_train_loader, val_loader, verbose=True):
         train_dataset = global_train_loader.dataset
-        subsets = get_ensemble_subsets(train_dataset, self.num_models, self.overlap_ratio)
+        
+        # Tách tập train_dataset thành 2 tập: base_train_dataset (để huấn luyện Base Models) 
+        # và meta_train_dataset (để huấn luyện Meta-Classifier). Khắc phục Data Leakage.
+        total_len = len(train_dataset)
+        indices = np.arange(total_len)
+        np.random.seed(self.config.get('seed', 42))
+        np.random.shuffle(indices)
+        
+        base_train_len = int((1.0 - self.meta_train_ratio) * total_len)
+        base_indices = indices[:base_train_len]
+        meta_indices = indices[base_train_len:]
+        
+        from torch.utils.data import Subset
+        base_train_dataset = Subset(train_dataset, base_indices)
+        meta_train_dataset = Subset(train_dataset, meta_indices)
+
+        subsets = get_ensemble_subsets(base_train_dataset, self.num_models, self.overlap_ratio)
         
         # 1. Huấn luyện từng Base Model
         if verbose:
-            print(f"\n--- STEP 1: TRAINING {self.num_models} BASE MODELS (WITH {self.overlap_ratio*100}% OVERLAP) ---")
+            print(f"\\n--- STEP 1: TRAINING {self.num_models} BASE MODELS (WITH {self.overlap_ratio*100}% OVERLAP) ---")
+            print(f"Data split: Base Models ({len(base_indices)} samples), Meta-Classifier ({len(meta_indices)} samples)")
             
         for i, base_model in enumerate(self.model.base_models):
             if verbose:
@@ -97,7 +120,8 @@ class EnsembleTrainer:
             use_sampler = self.config.get('training', {}).get('use_sampler', True)
             if use_sampler:
                 subset_indices = subsets[i].indices
-                subset_y = train_dataset.y[subset_indices].numpy()
+                original_indices = [base_indices[idx] for idx in subset_indices]
+                subset_y = train_dataset.y[original_indices].numpy()
                 class_counts = [np.sum(subset_y == 0), np.sum(subset_y == 1)]
                 total_samples = len(subset_y)
                 class_weights = [total_samples / c if c > 0 else 0.0 for c in class_counts]
@@ -152,26 +176,37 @@ class EnsembleTrainer:
         if verbose:
             print(f"\n--- STEP 2: TRAINING META-CLASSIFIER ---")
             
-        meta_optimizer, meta_scheduler = self._create_optimizer_and_scheduler(self.model.meta_classifier.parameters())
+        meta_optimizer, meta_scheduler = self._create_optimizer_and_scheduler(self.model.meta_classifier.parameters(), is_meta=True)
         criterion = nn.BCELoss()
         
         best_val_loss = float('inf')
         best_model_state = None
         patience_counter = 0
         
-        # Tái sử dụng global_train_loader (đã bao gồm WeightedSampler cho class imbalance) 
-        # để huấn luyện meta-classifier cho cân bằng.
-        meta_train_loader = global_train_loader
+        # Sử dụng meta_train_dataset đã tách từ trước để huấn luyện Meta-Classifier
+        # Tránh tình trạng meta-classifier bị "mù quáng" tin tưởng base models 
+        use_sampler = self.config.get('training', {}).get('use_sampler', True)
+        if use_sampler:
+            meta_y = train_dataset.y[meta_indices].numpy()
+            class_counts = [np.sum(meta_y == 0), np.sum(meta_y == 1)]
+            total_samples = len(meta_y)
+            class_weights = [total_samples / c if c > 0 else 0.0 for c in class_counts]
+            sample_weights = [class_weights[int(label)] for label in meta_y]
+            
+            sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
+            meta_train_loader = DataLoader(meta_train_dataset, batch_size=self.batch_size, sampler=sampler)
+        else:
+            meta_train_loader = DataLoader(meta_train_dataset, batch_size=self.batch_size, shuffle=True)
         
         start_time = time.time()
         try:
-            for epoch in range(self.epochs):
+            for epoch in range(self.meta_epochs):
                 # Train
                 self.model.train() 
                 self.model.base_models.eval() # Force base to stay eval
                 running_loss, correct, total = 0.0, 0, 0
                 
-                pbar = tqdm(meta_train_loader, desc=f"Meta [{epoch+1}/{self.epochs}]", leave=False, dynamic_ncols=True) if verbose else meta_train_loader
+                pbar = tqdm(meta_train_loader, desc=f"Meta [{epoch+1}/{self.meta_epochs}]", leave=False, dynamic_ncols=True) if verbose else meta_train_loader
                 for X_batch, y_batch in pbar:
                     X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
                     meta_optimizer.zero_grad()
@@ -199,7 +234,7 @@ class EnsembleTrainer:
                 self.model.eval()
                 val_loss, val_correct, val_total = 0.0, 0, 0
                 
-                val_pbar = tqdm(val_loader, desc=f"Val [{epoch+1}/{self.epochs}]", leave=False, dynamic_ncols=True) if verbose else val_loader
+                val_pbar = tqdm(val_loader, desc=f"Val [{epoch+1}/{self.meta_epochs}]", leave=False, dynamic_ncols=True) if verbose else val_loader
                 with torch.no_grad():
                     for X_batch, y_batch in val_pbar:
                         X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
@@ -229,7 +264,7 @@ class EnsembleTrainer:
                 if verbose:
                     import sys
                     sys.stdout.write('\033[K') 
-                    print(f"Meta-Epoch [{epoch+1:2d}/{self.epochs}] "
+                    print(f"Meta-Epoch [{epoch+1:2d}/{self.meta_epochs}] "
                           f"| Train Loss: {train_loss:.4f} Acc: {train_acc:.2f}% "
                           f"| Val Loss: {val_loss:.4f} Acc: {val_acc:.2f}% "
                           f"| LR: {current_lr:.6f}")

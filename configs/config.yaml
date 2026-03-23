@@ -25,6 +25,7 @@ data:
 # --- Model Settings ---
 model:
   type: "ensemble_lstm"       # "stacked_lstm", "lstm", "ensemble_lstm"
+  threshold: 0.8              # Ngưỡng phân loại (0.1 - 0.9). Cao -> Tăng Precision, Thấp -> Tăng Recall
   input_size: 3              # Số kênh đầu vào (x, y, z)
 
   # Stacked LSTM
@@ -38,6 +39,8 @@ model:
   ensemble:
     num_models: 3             # Số lượng mô hình cơ sở (thay đổi giá trị này để chuyển từ 3 sang 10)
     overlap_ratio: 0.15       # Tỷ lệ giao nhau giữa các tập dữ liệu huấn luyện
+    meta_train_ratio: 0.25    # Tỷ lệ tập train dành riêng cho Meta-Classifier (25%)
+    meta_learning_rate: 0.0005 # Learning rate riêng cho Meta-Classifier (nhỏ hơn để hội tụ tốt)
 
   num_classes: 1              # Binary classification (sigmoid output)
 

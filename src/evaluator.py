@@ -36,12 +36,13 @@ class Evaluator:
         self.model.eval()
 
     @torch.no_grad()
-    def predict(self, data_loader) -> tuple:
+    def predict(self, data_loader, threshold: float = 0.5) -> tuple:
         """
         Dự đoán trên toàn bộ DataLoader.
 
         Args:
             data_loader: DataLoader cần dự đoán
+            threshold: Ngưỡng quyết định (mặc định 0.5)
 
         Returns:
             (y_true, y_pred, y_proba):
@@ -61,12 +62,13 @@ class Evaluator:
 
         y_true = np.concatenate(all_true)
         y_proba = np.concatenate(all_proba)
-        y_pred = (y_proba >= 0.5).astype(int)
+        y_pred = (y_proba >= threshold).astype(int)
 
         return y_true, y_pred, y_proba
 
     def evaluate(self, data_loader, verbose: bool = True,
-                 save_dir: str = None) -> dict:
+                 save_dir: str = None, optimize_threshold: bool = True,
+                 threshold: float = 0.5) -> dict:
         """
         Đánh giá đầy đủ trên một tập dữ liệu.
 
@@ -74,14 +76,30 @@ class Evaluator:
             data_loader: DataLoader tập đánh giá
             verbose: In kết quả
             save_dir: Thư mục lưu biểu đồ (nếu có)
+            optimize_threshold: Tìm threshold tối ưu dựa trên F1-score
 
         Returns:
             dict chứa các metrics
         """
-        y_true, y_pred, y_proba = self.predict(data_loader)
+        y_true, _, y_proba = self.predict(data_loader, threshold=0.5)
+        
+        best_threshold = threshold
+        if optimize_threshold and len(np.unique(y_true)) > 1:
+            best_f1 = 0
+            for th in np.arange(0.1, 0.95, 0.05):
+                preds = (y_proba >= th).astype(int)
+                f1 = f1_score(y_true, preds, zero_division=0)
+                if f1 > best_f1:
+                    best_f1 = f1
+                    best_threshold = th
+            if verbose:
+                print(f"  -> Optimal Threshold found: {best_threshold:.2f} (F1: {best_f1:.4f})")
+                
+        y_pred = (y_proba >= best_threshold).astype(int)
 
         # Tính metrics
         metrics = self._compute_metrics(y_true, y_pred, y_proba)
+        metrics['best_threshold'] = best_threshold
 
         if verbose:
             self._print_report(metrics, y_true, y_pred)
@@ -144,6 +162,8 @@ class Evaluator:
               f"Fall (1): {metrics['n_positive']}")
 
         print(f"\n📈 Các Metrics:")
+        if 'best_threshold' in metrics:
+            print(f"   Threshold:   {metrics['best_threshold']:.2f}")
         print(f"   Accuracy:    {metrics['accuracy']:.4f} "
               f"({metrics['accuracy']*100:.2f}%)")
         print(f"   Precision:   {metrics['precision']:.4f}")
@@ -208,7 +228,9 @@ class Evaluator:
 
 def quick_evaluate(model: nn.Module, data_loader,
                    device: torch.device = None,
-                   verbose: bool = True, save_dir: str = None) -> dict:
+                   verbose: bool = True, save_dir: str = None,
+                   optimize_threshold: bool = True,
+                   threshold: float = 0.5) -> dict:
     """
     Hàm đánh giá nhanh.
 
@@ -223,4 +245,5 @@ def quick_evaluate(model: nn.Module, data_loader,
         dict metrics
     """
     evaluator = Evaluator(model, device)
-    return evaluator.evaluate(data_loader, verbose=verbose, save_dir=save_dir)
+    return evaluator.evaluate(data_loader, verbose=verbose, save_dir=save_dir, 
+                            optimize_threshold=optimize_threshold, threshold=threshold)
