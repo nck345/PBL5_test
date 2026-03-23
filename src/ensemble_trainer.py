@@ -135,6 +135,10 @@ class EnsembleTrainer:
             optimizer, _ = self._create_optimizer_and_scheduler(base_model.parameters())
             criterion = nn.BCELoss()
             
+            best_base_val_loss = float('inf')
+            best_base_model_state = None
+            base_patience_counter = 0
+            
             try:
                 for epoch in range(self.epochs):
                     base_model.train()
@@ -162,9 +166,59 @@ class EnsembleTrainer:
                     
                     if verbose and isinstance(pbar, tqdm):
                         pbar.close()
+                        
+                    # Val
+                    base_model.eval()
+                    val_loss, val_correct, val_total = 0.0, 0, 0
+                    
+                    val_pbar = tqdm(val_loader, desc=f"Base {i+1} Val [{epoch+1}/{self.epochs}]", leave=False, dynamic_ncols=True) if verbose else val_loader
+                    with torch.no_grad():
+                        for X_batch, y_batch in val_pbar:
+                            X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                            out = base_model(X_batch)
+                            loss = criterion(out, y_batch)
+                            val_loss += loss.item() * X_batch.size(0)
+                            pred = (out >= 0.5).float()
+                            val_correct += (pred == y_batch).sum().item()
+                            val_total += y_batch.size(0)
+                            
+                    if verbose and isinstance(val_pbar, tqdm):
+                        val_pbar.close()
+                        
+                    val_loss /= val_total
+                    val_acc = 100.0 * val_correct / val_total
+                    train_loss = running_loss / total
+                    train_acc = 100.0 * correct / total
+                    
+                    if verbose:
+                        import sys
+                        sys.stdout.write('\033[K') 
+                        print(f"Base {i+1} Epoch [{epoch+1:2d}/{self.epochs}] "
+                              f"| Train Loss: {train_loss:.4f} Acc: {train_acc:.2f}% "
+                              f"| Val Loss: {val_loss:.4f} Acc: {val_acc:.2f}%")
+                              
+                    # Early stopping logic for base model
+                    import copy
+                    if val_loss < best_base_val_loss - self.es_min_delta:
+                        best_base_val_loss = val_loss
+                        best_base_model_state = copy.deepcopy(base_model.state_dict())
+                        base_patience_counter = 0
+                    else:
+                        base_patience_counter += 1
+                        
+                    if self.early_stopping_enabled and base_patience_counter >= self.es_patience:
+                        if verbose:
+                            print(f"  -> Early stopping Base Model {i+1} at epoch {epoch+1}")
+                        break
+                        
             except KeyboardInterrupt:
                 if verbose:
                     print(f"\n! Canceled Base Model {i+1} training (KeyboardInterrupt).")
+                    
+            if best_base_model_state is not None:
+                base_model.load_state_dict(best_base_model_state)
+                if verbose:
+                    print(f"  -> Restored Base Model {i+1} to best epoch (val_loss: {best_base_val_loss:.4f})")
                     
         # 2. Đóng băng Base Models
         for param in self.model.base_models.parameters():
