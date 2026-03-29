@@ -43,26 +43,10 @@ class StackedLSTM(nn.Module):
         → FC → Dropout → Sigmoid → Output (1)
     """
 
-    def __init__(self, input_size: int = 3, hidden_size: int = 30,
-                 num_layers: int = 2, dropout: float = 0.3,
-                 bidirectional: bool = False, num_classes: int = 1):
-        """
-        Args:
-            input_size: Số kênh đầu vào (3 cho x, y, z)
-            hidden_size: Số neurons LSTM mỗi tầng
-            num_layers: Số tầng LSTM xếp chồng
-            dropout: Tỷ lệ dropout
-            bidirectional: Sử dụng bidirectional LSTM
-            num_classes: Số lớp đầu ra (1 cho binary)
-        """
+    def __init__(self, input_size=3, hidden_size=30, num_layers=2, dropout=0.3, bidirectional=False, num_classes=1):
         super(StackedLSTM, self).__init__()
-
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.bidirectional = bidirectional
-        self.num_directions = 2 if bidirectional else 1
-
-        # LSTM layers
+        
+        # Mô hình base (thường là 2-layer LSTM)
         self.lstm = nn.LSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -71,9 +55,70 @@ class StackedLSTM(nn.Module):
             dropout=dropout if num_layers > 1 else 0,
             bidirectional=bidirectional
         )
+        
+        self.num_directions = 2 if bidirectional else 1
+        
+        # Lớp Fully-Connected
+        self.fc = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * self.num_directions, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, num_classes),
+            nn.Sigmoid()
+        )
 
-        # Fully connected layers
-        fc_input_size = hidden_size * self.num_directions
+    def forward(self, x):
+        """
+        x: (batch_size, window_size, input_size)
+        """
+        # H_n trả về hidden states tại time_step cuối cho mỗi layer (num_layers*num_dirs, batch, hidden)
+        lstm_out, (h_n, c_n) = self.lstm(x)
+        
+        # Chỉ lấy hidden state của layer cuối cùng
+        if self.lstm.bidirectional:
+            # Gộp output của 2 chiều forward và backward
+            out = torch.cat((h_n[-2,:,:], h_n[-1,:,:]), dim=1)
+        else:
+            out = h_n[-1,:,:]
+            
+        return self.fc(out).squeeze(-1) # -> (batch_size,)
+
+# ============================================================
+# 3. Multi-branch LSTM (Cách 3)
+# ============================================================
+
+class MultiBranchLSTM(nn.Module):
+    """
+    Kiến trúc Đa nhánh (Multi-branch) để xử lý dữ liệu khi có/không có Gyroscope.
+    - Nhánh 1: Xử lý Gia tốc (luôn chạy)
+    - Nhánh 2: Xử lý Gyroscope (có cổng Gating)
+    """
+    def __init__(self, hidden_size: int = 30, num_layers: int = 2, 
+                 dropout: float = 0.3, bidirectional: bool = False, 
+                 num_classes: int = 1):
+        super(MultiBranchLSTM, self).__init__()
+        
+        self.num_directions = 2 if bidirectional else 1
+        
+        # Nhánh 1: Accelerometer (luôn là 3 kênh)
+        self.acc_lstm = nn.LSTM(
+            input_size=3, hidden_size=hidden_size, num_layers=num_layers,
+            batch_first=True, dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
+        
+        # Nhánh 2: Gyroscope (luôn là 3 kênh)
+        self.gyro_lstm = nn.LSTM(
+            input_size=3, hidden_size=hidden_size, num_layers=num_layers,
+            batch_first=True, dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
+        
+        # Gộp 2 nhánh (Concat)
+        fc_input_size = hidden_size * self.num_directions * 2
+        
+        # Lớp Phân loại
         self.fc = nn.Sequential(
             nn.Linear(fc_input_size, 64),
             nn.ReLU(),
@@ -87,28 +132,40 @@ class StackedLSTM(nn.Module):
 
     def forward(self, x):
         """
-        Forward pass.
-
-        Args:
-            x: Input tensor (batch, window_size, input_size)
-        Returns:
-            Output tensor (batch, num_classes)
+        x có shape: (batch, window_size, 7) nếu dùng đa cảm biến
         """
-        # LSTM
-        lstm_out, (h_n, c_n) = self.lstm(x)
-
-        # Lấy output tại timestep cuối cùng
-        if self.bidirectional:
-            # Concatenate forward and backward hidden states
-            out = torch.cat([h_n[-2], h_n[-1]], dim=1)
+        if x.shape[2] == 3:
+            # Tương thích ngược: Nếu input lỡ vào là 3 kênh thuần túy
+            acc_x = x
+            has_gyro_mask = torch.zeros(x.shape[0], 1, device=x.device)
+            gyro_x = torch.zeros_like(x)
         else:
-            out = h_n[-1]
+            acc_x = x[:, :, 0:3]
+            gyro_x = x[:, :, 3:6]
+            has_gyro_mask = x[:, 0, 6].unsqueeze(-1) # (batch, 1)
 
-        # Fully connected
-        out = self.fc(out)
+        # Xử lý nhánh Acc
+        _, (h_n_a, _) = self.acc_lstm(acc_x)
+        if self.acc_lstm.bidirectional:
+            acc_feat = torch.cat([h_n_a[-2], h_n_a[-1]], dim=1)
+        else:
+            acc_feat = h_n_a[-1]
+
+        # Xử lý output Gyro
+        _, (h_n_g, _) = self.gyro_lstm(gyro_x)
+        if self.gyro_lstm.bidirectional:
+            gyro_feat = torch.cat([h_n_g[-2], h_n_g[-1]], dim=1)
+        else:
+            gyro_feat = h_n_g[-1]
+            
+        # GATING: Xóa tín hiệu nhiễu với những dữ liệu không có Gyro (cờ = 0)
+        gyro_feat = gyro_feat * has_gyro_mask
+
+        # Fusion & Classification
+        fused = torch.cat([acc_feat, gyro_feat], dim=1)
+        out = self.fc(fused)
+        
         return out.squeeze(-1)
-
-
 
 # ============================================================
 # 4. Ensemble LSTM (Stacking)
@@ -125,6 +182,8 @@ class EnsembleLSTM(nn.Module):
         
         # Tạo danh sách các mô hình cơ sở độc lập
         self.base_models = nn.ModuleList([
+            MultiBranchLSTM(hidden_size, num_layers, dropout, bidirectional, num_classes)
+            if input_size >= 7 else
             StackedLSTM(input_size, hidden_size, num_layers, dropout, bidirectional, num_classes)
             for _ in range(num_models)
         ])
@@ -171,20 +230,32 @@ def build_model(config: dict) -> nn.Module:
     """
     model_cfg = config.get('model', {})
     model_type = model_cfg.get('type', 'stacked_lstm')
-    input_size = model_cfg.get('input_size', 3)
     num_classes = model_cfg.get('num_classes', 1)
     window_size = config.get('data', {}).get('window_size', 100)
+    
+    # Tính toán input_size. NẾU đa cảm biến, dùng 7 kênh (kênh thứ 7 làm Cờ hiệu Gating)
+    sensors = config.get('data', {}).get('sensors', ['acc'])
+    input_size = 7 if len(sensors) > 1 else 3
 
     if model_type == 'stacked_lstm':
         lstm_cfg = model_cfg.get('lstm', {})
-        model = StackedLSTM(
-            input_size=input_size,
-            hidden_size=lstm_cfg.get('hidden_size', 30),
-            num_layers=lstm_cfg.get('num_layers', 2),
-            dropout=lstm_cfg.get('dropout', 0.3),
-            bidirectional=lstm_cfg.get('bidirectional', False),
-            num_classes=num_classes
-        )
+        if input_size >= 7:
+            model = MultiBranchLSTM(
+                hidden_size=lstm_cfg.get('hidden_size', 30),
+                num_layers=lstm_cfg.get('num_layers', 2),
+                dropout=lstm_cfg.get('dropout', 0.3),
+                bidirectional=lstm_cfg.get('bidirectional', False),
+                num_classes=num_classes
+            )
+        else:
+            model = StackedLSTM(
+                input_size=input_size,
+                hidden_size=lstm_cfg.get('hidden_size', 30),
+                num_layers=lstm_cfg.get('num_layers', 2),
+                dropout=lstm_cfg.get('dropout', 0.3),
+                bidirectional=lstm_cfg.get('bidirectional', False),
+                num_classes=num_classes
+            )
 
     elif model_type == 'lstm':
         model = LSTM(

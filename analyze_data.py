@@ -7,20 +7,30 @@ import sys
 sys.path.append(os.getcwd())
 
 from src.utils import load_config
-from src.dataset import load_all_data, preprocess_data
+from src.dataset import load_mobiact_data, preprocess_data, load_archive3_data
 
 def analyze_distribution():
     config = load_config('configs/config.yaml')
     data_cfg = config['data']
     
     print("--- Analyze MobiAct Data Distribution ---")
-    segments, labels, subjects = load_all_data(
+    # B1: Tải dữ liệu MobiAct
+    print("Loading MobiAct dataset...")
+    segments, labels, subjects = load_mobiact_data(
         raw_data_dir=data_cfg['raw_data_dir'],
         sensor_type=data_cfg.get('sensor_type', 'acc'),
+        sensors=data_cfg.get('sensors', ['acc']),
         fall_labels=data_cfg.get('fall_labels'),
         adl_labels=data_cfg.get('adl_labels'),
         verbose=True
     )
+    
+    # Tải dữ liệu Archive (3)
+    archive_dir = os.path.join(os.path.dirname(data_cfg['raw_data_dir']), "archive (3)")
+    a3_s, a3_l, a3_sub = load_archive3_data(archive_dir, data_cfg.get('sensors', ['acc']))
+    segments.extend(a3_s)
+    labels.extend(a3_l)
+    subjects.extend(a3_sub)
     
     X, y, subject_ids = preprocess_data(segments, labels, subjects, config)
     

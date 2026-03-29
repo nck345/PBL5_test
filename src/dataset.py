@@ -88,25 +88,30 @@ def parse_mobiact_file(filepath: str) -> dict:
     return metadata
 
 
-def load_all_data(raw_data_dir: str, sensor_type: str = "acc",
-                  fall_labels: list = None, adl_labels: list = None,
-                  verbose: bool = True) -> tuple:
+def load_mobiact_data(raw_data_dir: str, sensor_type: str = "acc",
+                      sensors: list = None,
+                      fall_labels: list = None, adl_labels: list = None,
+                      verbose: bool = True) -> tuple:
     """
-    Tải tất cả dữ liệu từ thư mục Raw Data.
+    Tải dữ liệu từ thư mục Raw Data của MobiAct, hỗ trợ gộp nhiều loại cảm biến và xử lý khuyết cảm biến.
 
     Args:
         raw_data_dir: Đường dẫn thư mục Raw Data
-        sensor_type: Loại cảm biến ("acc", "gyro", "ori")
+        sensor_type: Loại cảm biến mặc định (nếu sensors là None)
+        sensors: Danh sách cảm biến cần dùng (vd: ["acc", "gyro"])
         fall_labels: Danh sách nhãn fall
         adl_labels: Danh sách nhãn ADL
         verbose: In thông tin quá trình tải
 
     Returns:
         (all_segments, all_labels, all_subjects):
-            - all_segments: list of np.ndarray, mỗi phần tử là dữ liệu 1 recording
+            - all_segments: list of np.ndarray, mỗi phần tử là dữ liệu gộp (n_samples, n_channels)
             - all_labels: list of int (0=ADL, 1=Fall)
             - all_subjects: list of int (subject IDs)
     """
+    if sensors is None:
+        sensors = [sensor_type]
+    
     if fall_labels is None:
         fall_labels = ["FOL", "FKL", "BSC", "SDL"]
     if adl_labels is None:
@@ -116,6 +121,8 @@ def load_all_data(raw_data_dir: str, sensor_type: str = "acc",
     all_segments = []
     all_labels = []
     all_subjects = []
+    
+    skipped_due_to_missing_sensor = 0
 
     activity_dirs = sorted([d for d in os.listdir(raw_data_dir)
                            if os.path.isdir(os.path.join(raw_data_dir, d))])
@@ -124,44 +131,166 @@ def load_all_data(raw_data_dir: str, sensor_type: str = "acc",
         activity_code = activity_dir.upper()
         activity_path = os.path.join(raw_data_dir, activity_dir)
 
-        # Xác định label: Fall (1) hoặc ADL (0)
         if activity_code in fall_labels:
             label = 1
         elif activity_code in adl_labels:
             label = 0
         else:
-            # Scenario dirs (SLH, SBW, SLW, SBE, SRH) — bỏ qua
             if verbose:
                 print(f"  Bỏ qua thư mục scenario: {activity_dir}")
             continue
 
-        # Tìm các file sensor phù hợp
-        pattern = os.path.join(activity_path, f"{activity_code}_{sensor_type}_*.txt")
-        files = sorted(glob.glob(pattern))
+        # Lấy danh sách file của cảm biến đầu tiên để làm gốc
+        first_sensor = sensors[0]
+        pattern = os.path.join(activity_path, f"{activity_code}_{first_sensor}_*.txt")
+        first_sensor_files = sorted(glob.glob(pattern))
 
-        if not files and verbose:
-            print(f"  Không tìm thấy file {sensor_type} cho {activity_code}")
+        if not first_sensor_files:
+            if verbose:
+                print(f"  Không tìm thấy file {first_sensor} cho {activity_code}")
             continue
 
-        for fpath in files:
-            result = parse_mobiact_file(fpath)
-            data = result.get('data', np.array([]).reshape(0, 3))
-            subject_id = result.get('subject_id', -1)
-
-            if data.shape[0] < 10:  # Bỏ qua file quá ngắn
+        for fpath in first_sensor_files:
+            # Phân tích Subject và Trial từ filename
+            # Format: Activity_Sensor_Subject_Trial.txt
+            basename = os.path.basename(fpath)
+            parts = basename.replace('.txt', '').split('_')
+            
+            # parts: [Activity, Sensor, Subject, Trial]
+            if len(parts) < 4:
                 continue
+            
+            subject_id_str = parts[2]
+            trial_id_str = parts[3]
+            
+            # Tìm các file cảm biến khác tương ứng
+            res_first = parse_mobiact_file(fpath)
+            acc_data = res_first.get('data', np.array([]))
+            min_len = acc_data.shape[0]
+            if min_len < 10:
+                continue
+                
+            combined_data = None
+            if len(sensors) > 1 and "gyro" in sensors:
+                gyro_fpath = os.path.join(activity_path, f"{activity_code}_gyro_{subject_id_str}_{trial_id_str}.txt")
+                has_gyro = False
+                if os.path.exists(gyro_fpath):
+                    res_gyro = parse_mobiact_file(gyro_fpath)
+                    gyro_data = res_gyro.get('data', np.array([]))
+                    if gyro_data.shape[0] >= 10:
+                        has_gyro = True
+                        
+                if has_gyro:
+                    min_len = min(min_len, gyro_data.shape[0])
+                    # Flag = 1 báo hiệu là có Gyro xịn
+                    flag_col = np.ones((min_len, 1))
+                    combined_data = np.hstack([acc_data[:min_len, :], gyro_data[:min_len, :], flag_col])
+                else:
+                    skipped_due_to_missing_sensor += 1
+                    # Thiết kế đắp Zero-Pad (Bù số 0) thay vì ném bỏ toàn bộ file ghi
+                    gyro_pad = np.zeros((min_len, 3))
+                    # Flag = 0 ngầm hiểu là tắt nhánh Gyro trong MultiBranchLSTM
+                    flag_col = np.zeros((min_len, 1))
+                    combined_data = np.hstack([acc_data[:min_len, :], gyro_pad, flag_col])
+            else:
+                # Nếu chỉ chạy hệ gốc 'acc'
+                combined_data = acc_data[:min_len, :]
 
-            all_segments.append(data)
+            all_segments.append(combined_data)
             all_labels.append(label)
-            all_subjects.append(subject_id)
+            all_subjects.append(int(subject_id_str))
 
     if verbose:
         n_fall = sum(1 for l in all_labels if l == 1)
         n_adl = sum(1 for l in all_labels if l == 0)
-        print(f"\nTotal: {len(all_segments)} recordings "
-              f"({n_adl} ADL, {n_fall} Fall)")
+        print(f"MobiAct Dataset:")
+        if skipped_due_to_missing_sensor > 0:
+            print(f"  [Warning] Có {skipped_due_to_missing_sensor} recordings đã bị đắp số 0 do thiếu file Gyroscope.")
+        print(f"  Total: {len(all_segments)} recordings "
+              f"({n_adl} ADL, {n_fall} Fall)\n")
 
     return all_segments, all_labels, all_subjects
+
+
+def load_archive3_data(archive_dir: str, sensors: list = None, verbose: bool = True) -> tuple:
+    """
+    Tải dữ liệu từ thư mục archive (3), vốn KHÔNG CÓ gyro, bù zero pad hoàn toàn nhánh gyro.
+    Đồng thời tự động upsample từ 25 Hz lên 50 Hz.
+    """
+    if sensors is None: sensors = ["acc"]
+    fall_labels = ["freeFall", "runFall", "walkFall"]
+    adl_labels = ["downSit", "runSit", "walkSit"]
+    
+    all_segments = []
+    all_labels = []
+    all_subjects = []
+    
+    if not os.path.exists(archive_dir):
+        if verbose: print(f"Thư mục {archive_dir} không tồn tại!")
+        return [], [], []
+
+    import re
+    import csv
+    import scipy.signal
+    
+    activity_dirs = sorted([d for d in os.listdir(archive_dir) if os.path.isdir(os.path.join(archive_dir, d))])
+    for activity_dir in activity_dirs:
+        activity_path = os.path.join(archive_dir, activity_dir)
+        
+        if activity_dir in fall_labels:
+            label = 1
+        elif activity_dir in adl_labels:
+            label = 0
+        else:
+            continue
+            
+        csv_files = glob.glob(os.path.join(activity_path, "*.csv"))
+        for fpath in csv_files:
+            basename = os.path.basename(fpath)
+            num_match = re.search(r'\d+', basename)
+            subj = int(num_match.group()) if num_match else 0
+            subject_id = 9000 + subj # Offset dải Subject tránh đụng độ với MobiAct
+            
+            try:
+                acc_lines = []
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f, delimiter=';')
+                    next(reader, None) # Skip headers
+                    for row in reader:
+                        if len(row) >= 6:
+                            try:
+                                acc_lines.append([float(row[3]), float(row[4]), float(row[5])])
+                            except ValueError:
+                                pass
+                acc_data = np.array(acc_lines)
+                if len(acc_data) < 10: continue
+                
+                # Upsample x2 từ 25 Hz về tương đương chuẩn 50 Hz
+                new_len = len(acc_data) * 2
+                acc_resampled = scipy.signal.resample(acc_data, new_len)
+                
+                if len(sensors) > 1 and "gyro" in sensors:
+                    gyro_pad = np.zeros((new_len, 3))
+                    flag_col = np.zeros((new_len, 1)) # Bắt buộc là 0 để Mạng loại bỏ nhiễu nhánh Gyro
+                    combined_data = np.hstack([acc_resampled, gyro_pad, flag_col])
+                else:
+                    combined_data = acc_resampled
+                    
+                all_segments.append(combined_data)
+                all_labels.append(label)
+                all_subjects.append(subject_id)
+            except Exception as e:
+                continue
+                
+    if verbose:
+        n_fall = sum(1 for l in all_labels if l == 1)
+        n_adl = sum(1 for l in all_labels if l == 0)
+        print(f"Archive (3) Dataset:")
+        print(f"  Total: {len(all_segments)} recordings "
+              f"({n_adl} ADL, {n_fall} Fall)\n")
+        
+    return all_segments, all_labels, all_subjects
+
 
 
 # ============================================================
@@ -256,7 +385,8 @@ def preprocess_data(segments: list, labels: list, subjects: list,
             all_window_subjects.extend([subj] * windows.shape[0])
 
     if not all_windows:
-        return (np.array([]).reshape(0, window_size, 3),
+        n_channels = segments[0].shape[1] if segments else 3
+        return (np.array([]).reshape(0, window_size, n_channels),
                 np.array([]),
                 np.array([]))
 
@@ -450,17 +580,31 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
     if verbose:
         print("=" * 50)
         print("BƯỚC 1: Tải dữ liệu MobiAct...")
-    segments, labels, subjects = load_all_data(
+    segments, labels, subjects = load_mobiact_data(
         raw_data_dir=data_cfg['raw_data_dir'],
         sensor_type=data_cfg.get('sensor_type', 'acc'),
+        sensors=data_cfg.get('sensors', ['acc']),
         fall_labels=data_cfg.get('fall_labels'),
         adl_labels=data_cfg.get('adl_labels'),
         verbose=verbose
     )
+    
+    # Bổ sung dữ liệu Archive 3
+    if verbose:
+        print("Tải dữ liệu phân mảnh (Archive 3)...")
+    archive_dir = os.path.join(os.path.dirname(data_cfg['raw_data_dir']), "archive (3)")
+    a3_segs, a3_lbls, a3_subjs = load_archive3_data(
+        archive_dir=archive_dir,
+        sensors=data_cfg.get('sensors', ['acc']),
+        verbose=verbose
+    )
+    segments.extend(a3_segs)
+    labels.extend(a3_lbls)
+    subjects.extend(a3_subjs)
 
     if not segments:
-        raise ValueError("Không tìm thấy dữ liệu nào! "
-                         "Kiểm tra đường dẫn raw_data_dir trong config.")
+        raise ValueError("Khong tim thay du lieu! "
+                         "Kiem tra duong dan raw_data_dir trong config.")
 
     # Bước 2: Tiền xử lý + Windowing
     if verbose:

@@ -4,10 +4,11 @@
 
 # --- Data Settings ---
 data:
-  raw_data_dir: "dataset/Raw Data"
-  annotated_data_dir: "dataset/Annotated Data"
+  raw_data_dir: "dataset/MobiAct/Raw Data"
+  annotated_data_dir: "dataset/MobiAct/Annotated Data"
   sampling_rate: 50          # Hz - tần số lấy mẫu
-  sensor_type: "acc"         # Loại cảm biến sử dụng (acc, gyro, ori)
+  sensor_type: "acc"         # Loại cảm biến sử dụng (mặc định)
+  sensors: ["acc", "gyro"]   # Danh sách cảm biến muốn sử dụng (acc, gyro)
 
   # Các nhãn fall và ADL
   fall_labels: ["FOL", "FKL", "BSC", "SDL"]
@@ -26,7 +27,7 @@ data:
 model:
   type: "ensemble_lstm"       # "stacked_lstm", "lstm", "ensemble_lstm"
   threshold: 0.8              # Ngưỡng phân loại (0.1 - 0.9). Cao -> Tăng Precision, Thấp -> Tăng Recall
-  input_size: 3              # Số kênh đầu vào (x, y, z)
+  input_size: 6               # (Tự động tính: số lượng sensors * 3) - Có thể bỏ qua giá trị này
 
   # Stacked LSTM
   lstm:
