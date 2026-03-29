@@ -83,6 +83,62 @@ def preprocess_signal(data: np.ndarray, config: dict,
 
     return data
 
+def load_predict_data(filepath: str, sensors: list) -> dict:
+    """Helper linh hoat tu dong nap du lieu giong train"""
+    import scipy.signal
+    if filepath.endswith('.csv'):
+        # Xu ly Archive 3 file
+        import csv
+        acc_lines = []
+        with open(filepath, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f, delimiter=';')
+            next(reader, None)
+            for row in reader:
+                if len(row) >= 6:
+                    try:
+                        acc_lines.append([float(row[3]), float(row[4]), float(row[5])])
+                    except ValueError:
+                        pass
+        data = np.array(acc_lines)
+        if len(data) >= 10:
+            data = scipy.signal.resample(data, len(data) * 2)
+        activity_code = "ADL" if "Sit" in os.path.basename(filepath) else "FALL"
+        subject_id = -1
+        has_gyro = False
+    else:
+        # Xu ly MobiAct
+        res = parse_mobiact_file(filepath)
+        data = res.get('data', np.array([]).reshape(0, 3))
+        activity_code = res.get('activity_code', 'N/A')
+        subject_id = res.get('subject_id', -1)
+        
+        has_gyro = False
+        if "_acc_" in filepath and len(sensors) > 1 and "gyro" in sensors:
+            gyro_filepath = filepath.replace("_acc_", "_gyro_")
+            if os.path.exists(gyro_filepath):
+                res_g = parse_mobiact_file(gyro_filepath)
+                gyro_data = res_g.get('data', np.array([]))
+                if gyro_data.shape[0] >= 10:
+                    has_gyro = True
+
+    # Multi-branch align & Zero-pad Gating
+    if len(sensors) > 1 and "gyro" in sensors:
+        min_len = data.shape[0]
+        if has_gyro:
+            min_len = min(min_len, gyro_data.shape[0])
+            flag_col = np.ones((min_len, 1))
+            combined = np.hstack([data[:min_len], gyro_data[:min_len], flag_col])
+        else:
+            gyro_pad = np.zeros((min_len, 3))
+            flag_col = np.zeros((min_len, 1))
+            combined = np.hstack([data[:min_len], gyro_pad, flag_col])
+        data = combined
+        
+    return {
+        'data': data,
+        'activity_code': activity_code,
+        'subject_id': subject_id
+    }
 
 def predict_file(filepath: str, model: torch.nn.Module, config: dict,
                  device: torch.device, threshold: float = 0.5,
@@ -93,9 +149,10 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
     Returns:
         dict chứa kết quả dự đoán
     """
-    # Parse file
-    result = parse_mobiact_file(filepath)
-    data = result.get('data', np.array([]).reshape(0, 3))
+    # Parse file động (Auto Multi-sensor / Zero-pad)
+    sensors = config.get('data', {}).get('sensors', ['acc'])
+    result = load_predict_data(filepath, sensors)
+    data = result.get('data', np.array([]))
 
     if data.shape[0] < 10:
         return {
@@ -157,8 +214,9 @@ def stream_predict(filepath: str, model: torch.nn.Module, config: dict,
     """
     Mô phỏng streaming inference — xử lý dữ liệu theo từng cửa sổ.
     """
-    result = parse_mobiact_file(filepath)
-    data = result.get('data', np.array([]).reshape(0, 3))
+    sensors = config.get('data', {}).get('sensors', ['acc'])
+    result = load_predict_data(filepath, sensors)
+    data = result.get('data', np.array([]))
 
     if data.shape[0] < 10:
         print("⚠ Dữ liệu quá ngắn để stream.")
@@ -301,7 +359,9 @@ def main():
     if os.path.isfile(input_path):
         files = [input_path]
     elif os.path.isdir(input_path):
-        files = sorted(glob.glob(os.path.join(input_path, '*.txt')))
+        files = sorted(glob.glob(os.path.join(input_path, '*.txt'))) + sorted(glob.glob(os.path.join(input_path, '*.csv')))
+        # Skip pure gyro files if user passed a folder, avoiding double prediction
+        files = [f for f in files if "_gyro_" not in os.path.basename(f)]
     else:
         print(f"\n❌ Không tìm thấy input: {input_path}")
         sys.exit(1)
