@@ -592,7 +592,11 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
     # Bổ sung dữ liệu Archive 3
     if verbose:
         print("Tải dữ liệu phân mảnh (Archive 3)...")
-    archive_dir = os.path.join(os.path.dirname(data_cfg['raw_data_dir']), "archive (3)")
+    
+    # Ưu tiên lấy đường dẫn từ config, nếu không có thì fallback tự suy luận như cũ
+    default_archive_dir = os.path.join(os.path.dirname(data_cfg.get('raw_data_dir', 'dataset')), "archive (3)")
+    archive_dir = data_cfg.get('archive_data_dir', default_archive_dir)
+    
     a3_segs, a3_lbls, a3_subjs = load_archive3_data(
         archive_dir=archive_dir,
         sensors=data_cfg.get('sensors', ['acc']),
