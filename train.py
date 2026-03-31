@@ -123,17 +123,54 @@ def main():
                              threshold=config['model'].get('threshold', 0.5))
 
     # ========================================
-    # 7. Vẽ biểu đồ training
+    # 7. Vẽ biểu đồ training riêng biệt
     # ========================================
     ensure_dir(results_dir)
+    model_name = config['model']['type']
+    
     plot_training_curves(
         history['train_loss'], history['val_loss'],
         history['train_acc'], history['val_acc'],
-        title='Fall Detection Training',
-        save_path=os.path.join(results_dir, 'training_curves.png')
+        title=f'{model_name.upper()} Training',
+        save_path=os.path.join(results_dir, f'{model_name}_training_curves.png')
     )
-    print(f"\n📊 Biểu đồ huấn luyện đã lưu tại: {results_dir}")
+    print(f"\n📊 Biểu đồ huấn luyện riêng biệt đã lưu tại: {results_dir}")
 
+    # ========================================
+    # 8. Cập nhật và vẽ biểu đồ so sánh chung
+    # ========================================
+    print("\n🔄 Đang cập nhật biểu đồ so sánh chung...")
+    import pickle
+    from src.utils import plot_combined_training_curves, plot_combined_roc_curves, plot_combined_metrics_comparison
+    
+    combined_data_path = os.path.join(results_dir, 'combined_benchmark_data.pkl')
+    
+    if os.path.exists(combined_data_path):
+        with open(combined_data_path, 'rb') as f:
+            all_data = pickle.load(f)
+    else:
+        all_data = {'histories': {}, 'roc_data': {}, 'metrics': {}}
+        
+    all_data['histories'][model_name] = history
+    all_data['roc_data'][model_name] = {
+        'fpr': metrics.get('fpr', []),
+        'tpr': metrics.get('tpr', []),
+        'auc': metrics.get('auc', 0.0)
+    }
+    all_data['metrics'][model_name] = {
+        'precision': metrics.get('precision', 0.0),
+        'recall': metrics.get('recall', 0.0),
+        'f1_score': metrics.get('f1_score', 0.0)
+    }
+    
+    with open(combined_data_path, 'wb') as f:
+        pickle.dump(all_data, f)
+        
+    plot_combined_training_curves(all_data['histories'], title="Training Comparison", save_path=os.path.join(results_dir, 'combined_training_curves.png'))
+    plot_combined_roc_curves(all_data['roc_data'], title="ROC/AUC Comparison", save_path=os.path.join(results_dir, 'combined_roc_curves.png'))
+    plot_combined_metrics_comparison(all_data['metrics'], title="Metrics Comparison", save_path=os.path.join(results_dir, 'model_metrics_comparison.png'))
+    
+    print("✅ Biểu đồ so sánh chung đã được cập nhật thành công!")
     print("\n✅ Hoàn thành!")
 
 
