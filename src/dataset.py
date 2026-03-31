@@ -6,6 +6,7 @@ Xử lý tải dữ liệu, tiền xử lý, windowing, và tạo DataLoader.
 
 import os
 import glob
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import torch
@@ -86,6 +87,49 @@ def parse_mobiact_file(filepath: str) -> dict:
             metadata['subject_id'] = -1
 
     return metadata
+
+
+def audit_activity_file_counts(raw_data_dir: str, labels: list,
+                               sensor_type: str = "acc") -> tuple:
+    """
+    Dem so file theo tung activity label trong config.
+
+    Returns:
+        (counts, missing_labels)
+    """
+    counts = {}
+    missing_labels = []
+
+    for label in labels:
+        activity_code = str(label).upper()
+        activity_path = os.path.join(raw_data_dir, activity_code)
+        pattern = os.path.join(activity_path, f"{activity_code}_{sensor_type}_*.txt")
+        count = len(glob.glob(pattern)) if os.path.isdir(activity_path) else 0
+        counts[activity_code] = count
+        if count == 0:
+            missing_labels.append(activity_code)
+
+    return counts, missing_labels
+
+
+def write_data_audit_log(log_path: str, fall_counts: dict, adl_counts: dict,
+                         missing_labels: list):
+    """Ghi ket qua data audit vao log."""
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    lines = [
+        f"[{timestamp}] Data audit (MobiAct Raw Data)",
+        "  Fall label counts: " + ", ".join([f"{k}={v}" for k, v in fall_counts.items()]),
+        "  ADL label counts: " + ", ".join([f"{k}={v}" for k, v in adl_counts.items()]),
+    ]
+    if missing_labels:
+        lines.append("  Missing labels: " + ", ".join(missing_labels))
+    else:
+        lines.append("  Missing labels: none")
+
+    with open(log_path, 'a', encoding='utf-8') as f:
+        f.write("\n".join(lines) + "\n\n")
 
 
 def load_mobiact_data(raw_data_dir: str, sensor_type: str = "acc",
@@ -575,6 +619,44 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
         dict chứa dataloaders, scaler, splits info
     """
     data_cfg = config['data']
+    fall_labels = data_cfg.get('fall_labels', ["FOL", "FKL", "BSC", "SDL"])
+    adl_labels = data_cfg.get(
+        'adl_labels',
+        ["STD", "WAL", "JOG", "JUM", "STU", "STN", "SCH", "SIT", "CHU", "CSI", "CSO", "LYI"]
+    )
+    strict_label_check = data_cfg.get('strict_label_check', False)
+    audit_sensor_type = data_cfg.get('sensor_type', 'acc')
+
+    # Audit data truoc khi tai de canh bao label thieu
+    fall_counts, missing_fall = audit_activity_file_counts(
+        raw_data_dir=data_cfg['raw_data_dir'],
+        labels=fall_labels,
+        sensor_type=audit_sensor_type
+    )
+    adl_counts, missing_adl = audit_activity_file_counts(
+        raw_data_dir=data_cfg['raw_data_dir'],
+        labels=adl_labels,
+        sensor_type=audit_sensor_type
+    )
+    missing_labels = sorted(set(missing_fall + missing_adl))
+
+    log_dir = config.get('paths', {}).get('log_dir', 'logs')
+    audit_log_path = os.path.join(log_dir, 'data_audit.log')
+    write_data_audit_log(audit_log_path, fall_counts, adl_counts, missing_labels)
+
+    if verbose:
+        print("Data audit:")
+        print(f"  Log file: {audit_log_path}")
+        if missing_labels:
+            print(f"  [Warning] Missing labels in raw data: {', '.join(missing_labels)}")
+        else:
+            print("  All configured labels have data files.")
+
+    if strict_label_check and missing_labels:
+        raise ValueError(
+            "strict_label_check=True va phat hien label khong co du lieu: "
+            + ", ".join(missing_labels)
+        )
 
     # Bước 1: Tải dữ liệu
     if verbose:
@@ -584,8 +666,8 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
         raw_data_dir=data_cfg['raw_data_dir'],
         sensor_type=data_cfg.get('sensor_type', 'acc'),
         sensors=data_cfg.get('sensors', ['acc']),
-        fall_labels=data_cfg.get('fall_labels'),
-        adl_labels=data_cfg.get('adl_labels'),
+        fall_labels=fall_labels,
+        adl_labels=adl_labels,
         verbose=verbose
     )
     

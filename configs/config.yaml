@@ -23,6 +23,7 @@ data:
   train_ratio: 0.70
   val_ratio: 0.15
   test_ratio: 0.15
+  strict_label_check: false   # Neu true: fail-fast khi label cau hinh khong co file du lieu
 
 # --- Model Settings ---
 model:
@@ -77,6 +78,11 @@ paths:
   checkpoint_dir: "models/checkpoints"
   final_model_dir: "models/final_model"
   log_dir: "logs"
+
+# --- Evaluation ---
+evaluation:
+  threshold_mode: "fixed"     # "fixed" | "val_calibrated"
+  threshold: 0.5              # Nguong mac dinh khi threshold_mode = fixed
 
 # --- Misc ---
 seed: 42

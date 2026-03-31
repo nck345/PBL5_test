@@ -66,9 +66,23 @@ class Evaluator:
 
         return y_true, y_pred, y_proba
 
+    def _find_best_threshold(self, y_true: np.ndarray, y_proba: np.ndarray) -> tuple:
+        """Tim threshold toi uu theo F1-score."""
+        best_threshold = 0.5
+        best_f1 = -1.0
+
+        for th in np.arange(0.1, 0.95, 0.05):
+            preds = (y_proba >= th).astype(int)
+            f1 = f1_score(y_true, preds, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = th
+
+        return best_threshold, best_f1
+
     def evaluate(self, data_loader, verbose: bool = True,
                  save_dir: str = None, optimize_threshold: bool = True,
-                 threshold: float = 0.5) -> dict:
+                 threshold: float = 0.5, calibration_loader=None) -> dict:
         """
         Đánh giá đầy đủ trên một tập dữ liệu.
 
@@ -82,19 +96,21 @@ class Evaluator:
             dict chứa các metrics
         """
         y_true, _, y_proba = self.predict(data_loader, threshold=0.5)
-        
+
         best_threshold = threshold
-        if optimize_threshold and len(np.unique(y_true)) > 1:
-            best_f1 = 0
-            for th in np.arange(0.1, 0.95, 0.05):
-                preds = (y_proba >= th).astype(int)
-                f1 = f1_score(y_true, preds, zero_division=0)
-                if f1 > best_f1:
-                    best_f1 = f1
-                    best_threshold = th
+        if calibration_loader is not None:
+            y_cal, _, y_cal_proba = self.predict(calibration_loader, threshold=0.5)
+            if len(np.unique(y_cal)) > 1:
+                best_threshold, best_f1 = self._find_best_threshold(y_cal, y_cal_proba)
+                if verbose:
+                    print(f"  -> Threshold calibrated on validation: {best_threshold:.2f} (F1: {best_f1:.4f})")
+            elif verbose:
+                print("  -> Validation calibration skipped (single class in calibration set).")
+        elif optimize_threshold and len(np.unique(y_true)) > 1:
+            best_threshold, best_f1 = self._find_best_threshold(y_true, y_proba)
             if verbose:
                 print(f"  -> Optimal Threshold found: {best_threshold:.2f} (F1: {best_f1:.4f})")
-                
+
         y_pred = (y_proba >= best_threshold).astype(int)
 
         # Tính metrics
@@ -230,7 +246,8 @@ def quick_evaluate(model: nn.Module, data_loader,
                    device: torch.device = None,
                    verbose: bool = True, save_dir: str = None,
                    optimize_threshold: bool = True,
-                   threshold: float = 0.5) -> dict:
+                   threshold: float = 0.5,
+                   calibration_loader=None) -> dict:
     """
     Hàm đánh giá nhanh.
 
@@ -245,5 +262,11 @@ def quick_evaluate(model: nn.Module, data_loader,
         dict metrics
     """
     evaluator = Evaluator(model, device)
-    return evaluator.evaluate(data_loader, verbose=verbose, save_dir=save_dir, 
-                            optimize_threshold=optimize_threshold, threshold=threshold)
+    return evaluator.evaluate(
+        data_loader,
+        verbose=verbose,
+        save_dir=save_dir,
+        optimize_threshold=optimize_threshold,
+        threshold=threshold,
+        calibration_loader=calibration_loader
+    )

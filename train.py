@@ -117,10 +117,17 @@ def main():
     # ========================================
     print("\n🧪 Đánh giá trên tập Test...")
     results_dir = os.path.join(config['paths'].get('log_dir', 'logs'), 'results')
-    metrics = quick_evaluate(model, test_loader, device,
-                             verbose=True, save_dir=results_dir,
-                             optimize_threshold=False,
-                             threshold=config['model'].get('threshold', 0.5))
+    eval_cfg = config.get('evaluation', {})
+    threshold_mode = eval_cfg.get('threshold_mode', 'fixed')
+    fixed_threshold = eval_cfg.get('threshold', config['model'].get('threshold', 0.5))
+    calibration_loader = val_loader if threshold_mode == 'val_calibrated' else None
+    metrics = quick_evaluate(
+        model, test_loader, device,
+        verbose=True, save_dir=results_dir,
+        optimize_threshold=False,
+        threshold=fixed_threshold,
+        calibration_loader=calibration_loader
+    )
 
     # ========================================
     # 7. Vẽ biểu đồ training riêng biệt

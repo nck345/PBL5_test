@@ -33,6 +33,11 @@ def parse_args():
                         help='Device: auto, cpu, cuda')
     parser.add_argument('--save_dir', type=str, default='logs/test_results',
                         help='Thư mục lưu kết quả')
+    parser.add_argument('--threshold-mode', type=str, default=None,
+                        choices=['fixed', 'val_calibrated'],
+                        help='Che do threshold: fixed hoac val_calibrated')
+    parser.add_argument('--threshold', type=float, default=None,
+                        help='Threshold co dinh khi threshold-mode=fixed')
     return parser.parse_args()
 
 
@@ -72,6 +77,7 @@ def main():
         print(f"\n❌ Lỗi: {e}")
         sys.exit(1)
 
+    val_loader = data['val_loader']
     test_loader = data['test_loader']
 
     # ========================================
@@ -88,10 +94,29 @@ def main():
     # 5. Đánh giá
     # ========================================
     print("\n🧪 Đánh giá trên tập Test...")
-    metrics = quick_evaluate(
-        model, test_loader, device,
-        verbose=True, save_dir=args.save_dir
-    )
+    eval_cfg = config.get('evaluation', {})
+    threshold_mode = args.threshold_mode or eval_cfg.get('threshold_mode', 'fixed')
+    fixed_threshold = args.threshold
+    if fixed_threshold is None:
+        fixed_threshold = eval_cfg.get('threshold', config['model'].get('threshold', 0.5))
+
+    if threshold_mode == 'val_calibrated':
+        print("  -> Threshold mode: val_calibrated")
+        metrics = quick_evaluate(
+            model, test_loader, device,
+            verbose=True, save_dir=args.save_dir,
+            optimize_threshold=False,
+            threshold=fixed_threshold,
+            calibration_loader=val_loader
+        )
+    else:
+        print(f"  -> Threshold mode: fixed ({fixed_threshold:.2f})")
+        metrics = quick_evaluate(
+            model, test_loader, device,
+            verbose=True, save_dir=args.save_dir,
+            optimize_threshold=False,
+            threshold=fixed_threshold
+        )
 
     # ========================================
     # 6. Tóm tắt

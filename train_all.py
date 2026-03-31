@@ -21,7 +21,7 @@ from src.dataset import prepare_data
 from src.architecture import build_model
 from src.trainer import Trainer
 from src.ensemble_trainer import EnsembleTrainer
-from src.evaluator import Evaluator
+from src.evaluator import quick_evaluate
 
 
 def parse_args():
@@ -88,6 +88,19 @@ def main():
     train_loader = data['train_loader']
     val_loader = data['val_loader']
     test_loader = data['test_loader']
+    eval_cfg = base_config.get('evaluation', {})
+    benchmark_threshold_mode = eval_cfg.get('threshold_mode', 'fixed')
+    benchmark_threshold = eval_cfg.get(
+        'threshold',
+        base_config.get('model', {}).get('threshold', 0.5)
+    )
+    if benchmark_threshold_mode != 'fixed':
+        print(
+            f"Warning: benchmark threshold_mode={benchmark_threshold_mode} "
+            "is not fair for cross-model comparison. Falling back to fixed."
+        )
+        benchmark_threshold_mode = 'fixed'
+    print(f"Benchmark threshold mode: {benchmark_threshold_mode} ({benchmark_threshold:.2f})")
     
     # Chuẩn bị biến chứa kết quả gộp
     all_histories = {}
@@ -152,9 +165,12 @@ def main():
         
         # Đánh giá Model trên tập Test để lấy ROC curve
         print(f"\nEvaluating {current_model.upper()} on Test set...")
-        evaluator = Evaluator(model, device)
-        y_true, y_pred, y_proba = evaluator.predict(test_loader)
-        metrics = evaluator._compute_metrics(y_true, y_pred, y_proba)
+        metrics = quick_evaluate(
+            model, test_loader, device,
+            verbose=False, save_dir=None,
+            optimize_threshold=False,
+            threshold=benchmark_threshold
+        )
         
         # Log nhanh kết quả Test
         print(f"  Test Accuracy: {metrics['accuracy']:.4f}")
@@ -181,6 +197,14 @@ def main():
     # 5. Vẽ biểu đồ so sánh gộp
     # ========================================
     print("\nDrawing combined comparison charts...")
+    import pickle
+    
+    # Lưu toàn bộ dữ liệu vào cache để train.py có thể dùng lại sau này
+    combined_data_path = os.path.join(results_dir, 'combined_benchmark_data.pkl')
+    all_data = {'histories': all_histories, 'roc_data': all_roc_data, 'metrics': all_metrics}
+    with open(combined_data_path, 'wb') as f:
+        pickle.dump(all_data, f)
+
     
     plot_combined_training_curves(
         all_histories,
