@@ -661,27 +661,28 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
 def get_ensemble_subsets(dataset: Dataset, num_models: int, overlap_ratio: float = 0.15) -> list:
     """
     Chia dataset gốc (train_dataset) thành `num_models` tập con (Subsets).
-    Giữa các tập con kế tiếp có `overlap_ratio` phần trăm dữ liệu trùng lặp.
-    Chiến lược này (Heap Strategy) giúp các mô hình cơ sở học được các khía cạnh 
-    vừa độc lập vừa tương đồng của dữ liệu.
+    Sử dụng chiến lược Bagging (Random Sampling).
+    Mỗi model cơ sở sẽ lấy ngẫu nhiên 90% dữ liệu gốc (10% bị drop ngẫu nhiên).
+    Việc này giúp các model cơ sở đủ sức mạnh học được quy luật chung giống LSTM thuần,
+    nhưng vẫn đảm bảo tính đa dạng (Diversity) để Meta-classifier kết hợp hiệu quả.
     """
+    import random
+    
     total_len = len(dataset)
     if num_models <= 1:
         return [dataset]
         
-    scale_factor = (num_models - 1) * (1.0 - overlap_ratio) + 1.0
-    segment_size = int(total_len / scale_factor)
-    step_size = int(segment_size * (1.0 - overlap_ratio))
-    
     subsets = []
-    for i in range(num_models):
-        start_idx = i * step_size
-        end_idx = start_idx + segment_size
+    # Tỉ lệ lấy mẫu: mỗi base model học trên 90% tổng số liệu
+    sample_size = int(total_len * 0.9)
+    if sample_size == 0:
+        sample_size = total_len
         
-        if i == num_models - 1:
-            end_idx = total_len 
-            
-        indices = list(range(start_idx, min(end_idx, total_len)))
+    all_indices = list(range(total_len))
+    
+    for i in range(num_models):
+        # random.sample lấy ngẫu nhiên KHÔNG hoàn lại từ dataset
+        indices = random.sample(all_indices, sample_size)
         subsets.append(Subset(dataset, indices))
         
     return subsets

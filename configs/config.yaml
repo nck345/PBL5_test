@@ -34,7 +34,7 @@ model:
   lstm:
     hidden_size: 30           # Số neurons LSTM
     num_layers: 2             # Số tầng LSTM xếp chồng
-    dropout: 0.3
+    dropout: 0.1              # Giảm dropout từ 0.3 -> 0.1 để chống underfitting
     bidirectional: false
 
   # Stacked Ensemble LSTM
