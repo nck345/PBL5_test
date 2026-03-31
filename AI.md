@@ -49,16 +49,3 @@ PBL5_test/
 ├── requirements.txt            # Thư viện yêu cầu: torch, numpy, pandas, scikit-learn, v.v.
 └── AI.md                       # File tài liệu mô tả cho AI (File này)
 ```
-
-## 3. Các Task cần thực hiện
-
-### Lập trình chi tiết các module AI
-- [x] **`src/architecture.py`**: Định nghĩa kiến trúc mô hình học sâu (ví dụ: Stacked LSTM / 1D CNN).
-- [x] **`src/dataset.py`**: Xây dựng logic tải, tiền xử lý dữ liệu (windowing, overlap định mức 15%), phân chia dữ liệu thành Train/Validation/Test và tạo DataLoader.
-- [x] **`src/trainer.py`**: Xây dựng pipeline huấn luyện mô hình (bao gồm vòng lặp Train, đánh giá Validation, Loss, Optimizer) và lưu lại checkpoints.
-- [x] **`src/evaluator.py`**: Cài đặt các hàm đánh giá hiệu năng mô hình (Accuracy, Precision, Recall, F1-Score, Confusion Matrix).
-- [x] **`src/utils.py`**: Triển khai các hàm tiện ích như bộ lọc IIR Low-pass, chuẩn hóa dữ liệu, và visualize kết quả.
-- [x] **`configs/config.yaml`**: Trình bày và thiết lập các thông số hyperparameters (e.g. freqs: 50Hz, neurons: 30, window_size).
-- [x] **`train.py`**: Script kết nối Datasets, Architecture, Trainer để tiến hành huấn luyện từ dòng lệnh (giám sát metrics của cả Train và Validation).
-- [x] **`test.py`**: Script load model đã train để chạy kiểm thử offline trên tập Test.
-- [x] **`predict.py`**: Script cho luồng Online Inference (dự đoán thời gian thực) nhận dữ liệu từ Gateway hoặc luồng stream trực tiếp.
