@@ -168,32 +168,112 @@ class MultiBranchLSTM(nn.Module):
         return out.squeeze(-1)
 
 # ============================================================
-# 4. Ensemble LSTM (Stacking)
+# 4. CNN-1D Model (Heterogeneous Mix)
+# ============================================================
+
+class CNN1DModel(nn.Module):
+    """
+    Mô hình CNN 1 chiều để học các mẫu không gian/tần số cao.
+    """
+    def __init__(self, input_size=3, hidden_size=30, num_layers=2, dropout=0.3, num_classes=1):
+        super(CNN1DModel, self).__init__()
+        self.conv1 = nn.Conv1d(input_size, hidden_size, kernel_size=3, padding=1)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool1d(2)
+        
+        self.conv2 = nn.Conv1d(hidden_size, hidden_size * 2, kernel_size=3, padding=1)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool1d(2)
+        
+        self.fc = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * 2, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, num_classes),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        # x shape: (batch_size, window_size, input_size) -> (batch_size, channels, length) for Conv1d
+        x = x.permute(0, 2, 1)
+        x = self.pool1(self.relu1(self.conv1(x)))
+        x = self.pool2(self.relu2(self.conv2(x)))
+        # Global Average Pooling theo chiều length (dim=2)
+        x = torch.mean(x, dim=2)
+        return self.fc(x).squeeze(-1)
+
+# ============================================================
+# 5. GRU Model (Heterogeneous Mix)
+# ============================================================
+
+class GRUModel(nn.Module):
+    """
+    Mô hình GRU để chống bão hòa thay cho LSTM, học nhanh hơn.
+    """
+    def __init__(self, input_size=3, hidden_size=30, num_layers=2, dropout=0.3, bidirectional=False, num_classes=1):
+        super(GRUModel, self).__init__()
+        self.gru = nn.GRU(
+            input_size=input_size, 
+            hidden_size=hidden_size, 
+            num_layers=num_layers,
+            batch_first=True, 
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
+        self.num_directions = 2 if bidirectional else 1
+        self.fc = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size * self.num_directions, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, num_classes),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        gru_out, h_n = self.gru(x)
+        if self.gru.bidirectional:
+            out = torch.cat((h_n[-2,:,:], h_n[-1,:,:]), dim=1)
+        else:
+            out = h_n[-1,:,:]
+        return self.fc(out).squeeze(-1)
+
+# ============================================================
+# 6. Ensemble LSTM (Stacking) / Heterogeneous
 # ============================================================
 
 class EnsembleLSTM(nn.Module):
     """
-    Mô hình Stacked Ensemble LSTM dựa theo kỹ thuật Heap Strategy.
-    Kết hợp dự đoán của nhiều mô hình StackedLSTM cơ sở qua một Meta-Classifier.
+    Mô hình Heterogeneous Ensemble sử dụng kiến trúc Mix.
+    Luân phiên giữa CNN, GRU và MultiBranchLSTM để tạo mảng học đa dạng.
+    Sử dụng Meta-Classifier ở cuối để tổng hợp (Stacking).
     """
     def __init__(self, num_models=3, input_size=3, hidden_size=30, num_layers=2, dropout=0.3, bidirectional=False, num_classes=1):
         super(EnsembleLSTM, self).__init__()
         self.num_models = num_models
         
-        # Tạo danh sách các mô hình cơ sở độc lập
-        self.base_models = nn.ModuleList([
-            MultiBranchLSTM(hidden_size, num_layers, dropout, bidirectional, num_classes)
-            if input_size >= 7 else
-            StackedLSTM(input_size, hidden_size, num_layers, dropout, bidirectional, num_classes)
-            for _ in range(num_models)
-        ])
+        # Tạo danh sách các mô hình cơ sở Đa dạng hóa (Mix)
+        # Sử dụng chu kỳ vòng lặp: CNN -> GRU -> LSTM
+        self.base_models = nn.ModuleList()
+        for i in range(num_models):
+            if i % 3 == 0:
+                self.base_models.append(CNN1DModel(input_size, hidden_size, num_layers, dropout, num_classes))
+            elif i % 3 == 1:
+                self.base_models.append(GRUModel(input_size, hidden_size, num_layers, dropout, bidirectional, num_classes))
+            else:
+                if input_size >= 7:
+                    self.base_models.append(MultiBranchLSTM(hidden_size, num_layers, dropout, bidirectional, num_classes))
+                else:
+                    self.base_models.append(StackedLSTM(input_size, hidden_size, num_layers, dropout, bidirectional, num_classes))
         
         # Meta-classifier: học cách kết hợp kết quả của các model cơ sở
-        # Đầu vào là output probability của N models
+        # Thêm Dropout 0.2 để tránh Overfit do mô hình được training trên 100% data
         meta_input_size = num_models * num_classes
         self.meta_classifier = nn.Sequential(
             nn.Linear(meta_input_size, max(num_models, 4)), 
             nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(max(num_models, 4), num_classes),
             nn.Sigmoid()
         )

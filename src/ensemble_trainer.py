@@ -91,27 +91,17 @@ class EnsembleTrainer:
     def train(self, global_train_loader, val_loader, verbose=True):
         train_dataset = global_train_loader.dataset
         
-        # Tách tập train_dataset thành 2 tập: base_train_dataset (để huấn luyện Base Models) 
-        # và meta_train_dataset (để huấn luyện Meta-Classifier). Khắc phục Data Leakage.
+        # BỎ Hold-out tĩnh: Không cắt 25% dữ liệu nữa. 
+        # Sử dụng 100% dữ liệu gốc cho quá trình Bagging huấn luyện Base Models.
         total_len = len(train_dataset)
-        indices = np.arange(total_len)
-        np.random.seed(self.config.get('seed', 42))
-        np.random.shuffle(indices)
+        base_indices = np.arange(total_len)
         
-        base_train_len = int((1.0 - self.meta_train_ratio) * total_len)
-        base_indices = indices[:base_train_len]
-        meta_indices = indices[base_train_len:]
-        
-        from torch.utils.data import Subset
-        base_train_dataset = Subset(train_dataset, base_indices)
-        meta_train_dataset = Subset(train_dataset, meta_indices)
-
-        subsets = get_ensemble_subsets(base_train_dataset, self.num_models, self.overlap_ratio)
+        subsets = get_ensemble_subsets(train_dataset, self.num_models, self.overlap_ratio)
         
         # 1. Huấn luyện từng Base Model
         if verbose:
-            print(f"\\n--- STEP 1: TRAINING {self.num_models} BASE MODELS (WITH {self.overlap_ratio*100}% OVERLAP) ---")
-            print(f"Data split: Base Models ({len(base_indices)} samples), Meta-Classifier ({len(meta_indices)} samples)")
+            print(f"\\n--- STEP 1: TRAINING {self.num_models} BASE MODELS (BAGGING) ---")
+            print(f"Data split: Using 100% data ({total_len} samples) for Bagging.")
             
         for i, base_model in enumerate(self.model.base_models):
             if verbose:
@@ -237,20 +227,9 @@ class EnsembleTrainer:
         best_model_state = None
         patience_counter = 0
         
-        # Sử dụng meta_train_dataset đã tách từ trước để huấn luyện Meta-Classifier
-        # Tránh tình trạng meta-classifier bị "mù quáng" tin tưởng base models 
-        use_sampler = self.config.get('training', {}).get('use_sampler', True)
-        if use_sampler:
-            meta_y = train_dataset.y[meta_indices].numpy()
-            class_counts = [np.sum(meta_y == 0), np.sum(meta_y == 1)]
-            total_samples = len(meta_y)
-            class_weights = [total_samples / c if c > 0 else 0.0 for c in class_counts]
-            sample_weights = [class_weights[int(label)] for label in meta_y]
-            
-            sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
-            meta_train_loader = DataLoader(meta_train_dataset, batch_size=self.batch_size, sampler=sampler)
-        else:
-            meta_train_loader = DataLoader(meta_train_dataset, batch_size=self.batch_size, shuffle=True)
+        # Thay vì tốn 25% hold out, sử dụng nguyên văn global_train_loader (100% data) 
+        # Meta-Classifier được tích hợp Dropout 0.2 để tránh overfitting
+        meta_train_loader = global_train_loader
         
         start_time = time.time()
         try:

@@ -56,7 +56,7 @@ training:
   loss_function: "bce"       # Binary Cross Entropy
   use_sampler: true          # Bật WeightedRandomSampler dể giải quyết mất cân bằng DL
   scheduler:
-    type: "reduce_on_plateau" # "step", "reduce_on_plateau", "cosine"
+    type: "cosine" # "step", "reduce_on_plateau", "cosine"
     patience: 5
     factor: 0.5
   early_stopping:
