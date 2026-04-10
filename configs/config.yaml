@@ -4,7 +4,7 @@
 
 # --- Data Settings ---
 data:
-  raw_data_dir: "dataset/MobiAct/Raw Data"
+  raw_data_dir: "dataset/MobiAct/Annotated Data"
   annotated_data_dir: "dataset/MobiAct/Annotated Data"
   archive_data_dir: "dataset/archive (3)"
   sampling_rate: 50          # Hz - tần số lấy mẫu
