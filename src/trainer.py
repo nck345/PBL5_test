@@ -48,14 +48,13 @@ class Trainer:
         self.lr = train_cfg.get('learning_rate', 0.001)
         self.weight_decay = train_cfg.get('weight_decay', 0.0001)
 
-        # Tính toán pos_weight cho BCELoss (hoặc tự nhân manual trong vòng lặp)
-        # Vì model đầu ra có Sigmoid, ta vẫn dụng BCELoss.
-        # Nhưng thay vì xài parameter weight không có của BCELoss, ta dùng thuộc tính nội bộ.
-        # Ở đây, BCELoss truyền thống cũng có param "weight" cho từng minibatch element.
-        # Hoặc dùng weight cố định cho class = 1 (mặc dù nn.BCELoss không có pos_weight như BCEWithLogitsLoss)
-        # Giải pháp tốt nhất: WeightedRandomSampler đã đổi data, loss ko nhất thiết cần pos_weight nữa.
-        # Để an toàn, cứ giữ BCELoss nguyên bản vì sampler đã lo vụ balance 50/50 rồi.
-        self.criterion = nn.BCELoss()
+        # Loss Function
+        loss_fn_str = train_cfg.get('loss_function', 'bce')
+        if loss_fn_str == 'focal':
+            from .losses import FocalLoss
+            self.criterion = FocalLoss(alpha=0.75, gamma=2.0)
+        else:
+            self.criterion = nn.BCELoss()
 
         # Optimizer
         optimizer_name = train_cfg.get('optimizer', 'adam')

@@ -199,7 +199,12 @@ class EnsembleTrainer:
                 loader = DataLoader(subsets[i], batch_size=self.batch_size, shuffle=True)
 
             optimizer, _ = self._create_optimizer_and_scheduler(base_model.parameters())
-            criterion = nn.BCELoss()
+            loss_fn_str = self.config.get('training', {}).get('loss_function', 'bce')
+            if loss_fn_str == 'focal':
+                from .losses import FocalLoss
+                criterion = FocalLoss(alpha=0.75, gamma=2.0)
+            else:
+                criterion = nn.BCELoss()
 
             best_base_val_loss = float('inf')
             best_base_model_state = None
@@ -313,7 +318,12 @@ class EnsembleTrainer:
             self.model.meta_classifier.parameters(),
             is_meta=True
         )
-        criterion = nn.BCELoss()
+        loss_fn_str = self.config.get('training', {}).get('loss_function', 'bce')
+        if loss_fn_str == 'focal':
+            from .losses import FocalLoss
+            criterion = FocalLoss(alpha=0.5, gamma=2.0) # meta classifier may not need high imbalance alpha
+        else:
+            criterion = nn.BCELoss()
 
         best_val_loss = float('inf')
         best_model_state = None

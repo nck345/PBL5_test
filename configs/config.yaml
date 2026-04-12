@@ -55,7 +55,7 @@ training:
   learning_rate: 0.001
   weight_decay: 0.0001
   optimizer: "adam"           # "adam", "sgd"
-  loss_function: "bce"       # Binary Cross Entropy
+  loss_function: "focal"       # "bce", "focal"
   use_sampler: true          # Bật WeightedRandomSampler dể giải quyết mất cân bằng DL
   scheduler:
     type: "cosine" # "step", "reduce_on_plateau", "cosine"
@@ -82,7 +82,7 @@ paths:
 
 # --- Evaluation ---
 evaluation:
-  threshold_mode: "fixed"     # "fixed" | "val_calibrated"
+  threshold_mode: "val_calibrated"     # "fixed" | "val_calibrated"
   threshold: 0.5              # Nguong mac dinh khi threshold_mode = fixed
 
 # --- Misc ---
