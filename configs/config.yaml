@@ -7,6 +7,7 @@ data:
   raw_data_dir: "dataset/MobiAct/Annotated Data"
   annotated_data_dir: "dataset/MobiAct/Annotated Data"
   archive_data_dir: "dataset/archive (3)"
+  sisfall_data_dir: "dataset/sisfall"
   sampling_rate: 50          # Hz - tần số lấy mẫu
   sensor_type: "acc"         # Loại cảm biến sử dụng (mặc định)
   sensors: ["acc", "gyro"]   # Danh sách cảm biến muốn sử dụng (acc, gyro)

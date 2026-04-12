@@ -337,6 +337,104 @@ def load_archive3_data(archive_dir: str, sensors: list = None, verbose: bool = T
     return all_segments, all_labels, all_subjects
 
 
+def load_sisfall_data(sisfall_dir: str, sensors: list = None, verbose: bool = True) -> tuple:
+    """
+    Tải dữ liệu từ thư mục SisFall.
+    Tự động downsample từ 200 Hz về 50 Hz.
+    Phân mảnh và gán Subject ID (SA -> 1000+, SE -> 2000+).
+    """
+    if sensors is None: sensors = ["acc"]
+    
+    all_segments = []
+    all_labels = []
+    all_subjects = []
+    
+    if not os.path.exists(sisfall_dir):
+        if verbose: print(f"Thư mục {sisfall_dir} không tồn tại!")
+        return [], [], []
+
+    import re
+    import csv
+    
+    # Quét tất cả các thư mục SA* và SE*
+    subject_dirs = sorted([d for d in os.listdir(sisfall_dir) if os.path.isdir(os.path.join(sisfall_dir, d)) and (d.startswith('SA') or d.startswith('SE'))])
+    
+    for subj_dir in subject_dirs:
+        subj_path = os.path.join(sisfall_dir, subj_dir)
+        subj_prefix = subj_dir[:2]
+        
+        try:
+            subj_num = int(subj_dir[2:])
+            if subj_prefix == 'SA':
+                subject_id = 1000 + subj_num
+            else:
+                subject_id = 2000 + subj_num
+        except ValueError:
+            continue
+            
+        txt_files = glob.glob(os.path.join(subj_path, "*.txt"))
+        for fpath in txt_files:
+            basename = os.path.basename(fpath)
+            # Tên file: D01_SA01_R01.txt hoặc F01_SA01_R01.txt
+            if basename.startswith('F'):
+                label = 1
+            elif basename.startswith('D'):
+                label = 0
+            else:
+                continue
+                
+            try:
+                data_lines = []
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line: continue
+                        # Dấu chấm phẩy ở cuối dòng
+                        if line.endswith(';'):
+                            line = line[:-1]
+                        parts = line.split(',')
+                        if len(parts) >= 9:
+                            try:
+                                # acc X, Y, Z (cột 0, 1, 2)
+                                line_vals = [float(p.strip()) for p in parts[:9]]
+                                data_lines.append(line_vals)
+                            except ValueError:
+                                pass
+                                
+                data = np.array(data_lines)
+                if len(data) < 40: # Rất ngắn
+                    continue
+                    
+                # Downsample 200Hz -> 50Hz (Lấy mỗi 4 sample)
+                data_downsampled = data[::4, :]
+                
+                # Tách acc và gyro
+                acc_data = data_downsampled[:, :3] # Cột 0,1,2
+                
+                if len(sensors) > 1 and "gyro" in sensors:
+                    gyro_data = data_downsampled[:, 3:6] # Cột 3,4,5
+                    # Do Gyro từ SisFall có sẵn, không cần tạo mask 0, nên gán flag = 1
+                    flag_col = np.ones((len(data_downsampled), 1)) 
+                    combined_data = np.hstack([acc_data, gyro_data, flag_col])
+                else:
+                    combined_data = acc_data
+                    
+                all_segments.append(combined_data)
+                all_labels.append(label)
+                all_subjects.append(subject_id)
+            except Exception as e:
+                continue
+                
+    if verbose:
+        n_fall = sum(1 for l in all_labels if l == 1)
+        n_adl = sum(1 for l in all_labels if l == 0)
+        print(f"SisFall Dataset:")
+        print(f"  Total: {len(all_segments)} recordings "
+              f"({n_adl} ADL, {n_fall} Fall)\n")
+              
+    return all_segments, all_labels, all_subjects
+
+
 
 # ============================================================
 # 2. Windowing (Sliding Window)
@@ -688,6 +786,21 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
     segments.extend(a3_segs)
     labels.extend(a3_lbls)
     subjects.extend(a3_subjs)
+
+    # Bổ sung dữ liệu SisFall
+    if verbose:
+        print("Tải dữ liệu phân mảnh (SisFall)...")
+        
+    sisfall_dir = data_cfg.get('sisfall_data_dir', os.path.join(os.path.dirname(data_cfg.get('raw_data_dir', 'dataset')), "sisfall"))
+    
+    sf_segs, sf_lbls, sf_subjs = load_sisfall_data(
+        sisfall_dir=sisfall_dir,
+        sensors=data_cfg.get('sensors', ['acc']),
+        verbose=verbose
+    )
+    segments.extend(sf_segs)
+    labels.extend(sf_lbls)
+    subjects.extend(sf_subjs)
 
     if not segments:
         raise ValueError("Khong tim thay du lieu! "
