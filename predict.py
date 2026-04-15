@@ -132,6 +132,11 @@ def load_predict_data(filepath: str, sensors: list) -> dict:
             gyro_pad = np.zeros((min_len, 3))
             flag_col = np.zeros((min_len, 1))
             combined = np.hstack([data[:min_len], gyro_pad, flag_col])
+        
+        # Check config to format channels correctly
+        # Hacky workaround: since load_predict_data only receives filepath and sensors, 
+        # we can't easily check config. But we know if model was trained on 6 channels, 
+        # it will fail. Let's just adjust it inside predict_file where config is available.
         data = combined
         
     return {
@@ -153,6 +158,10 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
     sensors = config.get('data', {}).get('sensors', ['acc'])
     result = load_predict_data(filepath, sensors)
     data = result.get('data', np.array([]))
+
+    # Loại bỏ cờ padding Gyro (kênh 7) vì tập numpy chuẩn được trích xuất với 6 kênh
+    if data.shape[1] == 7:
+        data = data[:, :6]
 
     if data.shape[0] < 10:
         return {
@@ -217,6 +226,10 @@ def stream_predict(filepath: str, model: torch.nn.Module, config: dict,
     sensors = config.get('data', {}).get('sensors', ['acc'])
     result = load_predict_data(filepath, sensors)
     data = result.get('data', np.array([]))
+
+    # Loại bỏ cờ padding Gyro (kênh 7) vì tập numpy chuẩn được trích xuất với 6 kênh
+    if data.shape[1] == 7:
+        data = data[:, :6]
 
     if data.shape[0] < 10:
         print("⚠ Dữ liệu quá ngắn để stream.")
@@ -353,6 +366,20 @@ def main():
     print("  ✓ Model đã sẵn sàng!")
 
     # ========================================
+    # 2.5 Load Scaler
+    # ========================================
+    import pickle
+    scaler_path = os.path.join(config['data'].get('data_dir', 'dataset/sisfall_processed'), 'step6_scaler.pkl')
+    try:
+        with open(scaler_path, 'rb') as f:
+            scaler = pickle.load(f)
+        print(f"  ✓ Đã nạp Scaler từ {scaler_path}")
+    except FileNotFoundError:
+        print(f"\n❌ Lỗi: Không tìm thấy file Scaler tại {scaler_path}!")
+        print("Mô hình được huấn luyện trên dữ liệu Preprocessed bắt buộc phải có Scaler để dự đoán thực tế.")
+        sys.exit(1)
+
+    # ========================================
     # 3. Xác định input files
     # ========================================
     input_path = args.input
@@ -378,7 +405,7 @@ def main():
     if args.stream and len(files) == 1:
         # Streaming mode
         stream_predict(files[0], model, config, device,
-                       threshold=args.threshold)
+                       threshold=args.threshold, scaler=scaler)
     else:
         # Batch prediction
         print(f"\n{'='*70}")
@@ -392,7 +419,7 @@ def main():
 
         for fpath in files:
             result = predict_file(fpath, model, config, device,
-                                  threshold=args.threshold)
+                                  threshold=args.threshold, scaler=scaler)
 
             if result.get('status') == 'SKIPPED':
                 continue

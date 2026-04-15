@@ -1,90 +1,77 @@
-# ============================================================
-# PBL5
-# ============================================================
-
-# --- Data Settings ---
 data:
-  raw_data_dir: "dataset/MobiAct/Annotated Data"
-  annotated_data_dir: "dataset/MobiAct/Annotated Data"
-  archive_data_dir: "dataset/archive (3)"
-  sisfall_data_dir: "dataset/sisfall"
-  sampling_rate: 50          # Hz - tần số lấy mẫu
-  sensor_type: "acc"         # Loại cảm biến sử dụng (mặc định)
-  sensors: ["acc", "gyro"]   # Danh sách cảm biến muốn sử dụng (acc, gyro)
-
-  # Các nhãn fall và ADL
-  fall_labels: ["FOL", "FKL", "BSC", "SDL"]
-  adl_labels: ["STD", "WAL", "JOG", "JUM", "STU", "STN", "SCH", "SIT", "CHU", "CSI", "CSO", "LYI"]
-
-  # Windowing
-  window_size: 100           # Số sample mỗi cửa sổ (100 samples = 2s @ 50Hz)
-  overlap: 0.15              # 15% overlap giữa các cửa sổ
-
-  # Phân chia dữ liệu (theo subject ID để tránh data leakage)
-  train_ratio: 0.70
+  sampling_rate: 50
+  sensor_type: acc
+  sensors:
+  - acc
+  - gyro
+  fall_labels:
+  - FOL
+  - FKL
+  - BSC
+  - SDL
+  adl_labels:
+  - STD
+  - WAL
+  - JOG
+  - JUM
+  - STU
+  - STN
+  - SCH
+  - SIT
+  - CHU
+  - CSI
+  - CSO
+  - LYI
+  window_size: 100
+  overlap: 0.15
+  train_ratio: 0.7
   val_ratio: 0.15
   test_ratio: 0.15
-  strict_label_check: false   # Neu true: fail-fast khi label cau hinh khong co file du lieu
-
-# --- Model Settings ---
+  strict_label_check: false
+  data_dir: dataset/sisfall_processed
 model:
-  type: "ensemble_lstm"       # "stacked_lstm", "lstm", "ensemble_lstm"
-  threshold: 0.8              # Ngưỡng phân loại (0.1 - 0.9). Cao -> Tăng Precision, Thấp -> Tăng Recall
-  input_size: 6               # (Tự động tính: số lượng sensors * 3) - Có thể bỏ qua giá trị này
-
-  # Stacked LSTM
+  type: ensemble_lstm
+  threshold: 0.8
+  input_size: 6
   lstm:
-    hidden_size: 30           # Số neurons LSTM
-    num_layers: 2             # Số tầng LSTM xếp chồng
-    dropout: 0.1              # Giảm dropout từ 0.3 -> 0.1 để chống underfitting
+    hidden_size: 30
+    num_layers: 2
+    dropout: 0.1
     bidirectional: false
-
-  # Stacked Ensemble LSTM
   ensemble:
-    num_models: 10             # Số lượng mô hình cơ sở (thay đổi giá trị này để chuyển từ 3 sang 10)
-    overlap_ratio: 0.15       # Tỷ lệ giao nhau giữa các tập dữ liệu huấn luyện
-    meta_train_ratio: 0.25    # Tỷ lệ tập train dành riêng cho Meta-Classifier (25%)
-    meta_learning_rate: 0.0005 # Learning rate riêng cho Meta-Classifier (nhỏ hơn để hội tụ tốt)
-
-  num_classes: 1              # Binary classification (sigmoid output)
-
-# --- Training Settings ---
+    num_models: 10
+    overlap_ratio: 0.15
+    meta_train_ratio: 0.25
+    meta_learning_rate: 0.0005
+  num_classes: 1
 training:
   epochs: 50
   batch_size: 64
   learning_rate: 0.001
   weight_decay: 0.0001
-  optimizer: "adam"           # "adam", "sgd"
-  loss_function: "focal"       # "bce", "focal"
-  use_sampler: true          # Bật WeightedRandomSampler dể giải quyết mất cân bằng DL
+  optimizer: adam
+  loss_function: focal
+  use_sampler: true
   scheduler:
-    type: "cosine" # "step", "reduce_on_plateau", "cosine"
+    type: cosine
     patience: 5
     factor: 0.5
   early_stopping:
     enabled: true
     patience: 10
     min_delta: 0.001
-
-# --- Preprocessing ---
 preprocessing:
   lowpass_filter:
     enabled: true
-    cutoff_freq: 20           # Hz
-    order: 4                  # Bậc bộ lọc Butterworth
-  normalization: "standard"   # "standard" (z-score), "minmax", "none"
-
-# --- Paths ---
+    cutoff_freq: 20
+    order: 4
+  normalization: standard
 paths:
-  checkpoint_dir: "models/checkpoints"
-  final_model_dir: "models/final_model"
-  log_dir: "logs"
-
-# --- Evaluation ---
+  checkpoint_dir: models/checkpoints
+  final_model_dir: models/final_model
+  log_dir: logs
 evaluation:
-  threshold_mode: "val_calibrated"     # "fixed" | "val_calibrated"
-  threshold: 0.5              # Nguong mac dinh khi threshold_mode = fixed
-
-# --- Misc ---
+  threshold_mode: val_calibrated
+  threshold: 0.5
 seed: 42
-device: "auto"                # "auto", "cpu", "cuda"
+device: auto

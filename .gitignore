@@ -13,6 +13,7 @@ env/
 
 # Dữ liệu & AI Models (KHÔNG đưa lên GitHub)
 dataset/
+dataset_pending/
 models/
 logs/
 

@@ -139,6 +139,10 @@ class MultiBranchLSTM(nn.Module):
             acc_x = x
             has_gyro_mask = torch.zeros(x.shape[0], 1, device=x.device)
             gyro_x = torch.zeros_like(x)
+        elif x.shape[2] == 6:
+            acc_x = x[:, :, 0:3]
+            gyro_x = x[:, :, 3:6]
+            has_gyro_mask = torch.ones(x.shape[0], 1, device=x.device)
         else:
             acc_x = x[:, :, 0:3]
             gyro_x = x[:, :, 3:6]
@@ -313,9 +317,9 @@ def build_model(config: dict) -> nn.Module:
     num_classes = model_cfg.get('num_classes', 1)
     window_size = config.get('data', {}).get('window_size', 100)
     
-    # Tính toán input_size. NẾU đa cảm biến, dùng 7 kênh (kênh thứ 7 làm Cờ hiệu Gating)
+    # Cố định input_size là 6 kênh (Acc + Gyro) hoặc 3 kênh (Acc)
     sensors = config.get('data', {}).get('sensors', ['acc'])
-    input_size = 7 if len(sensors) > 1 else 3
+    input_size = 6 if len(sensors) > 1 else 3
 
     if model_type == 'stacked_lstm':
         lstm_cfg = model_cfg.get('lstm', {})

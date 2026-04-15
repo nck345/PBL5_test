@@ -89,350 +89,12 @@ def parse_mobiact_file(filepath: str) -> dict:
     return metadata
 
 
-def audit_activity_file_counts(raw_data_dir: str, labels: list,
-                               sensor_type: str = "acc") -> tuple:
-    """
-    Dem so file theo tung activity label trong config.
-
-    Returns:
-        (counts, missing_labels)
-    """
-    counts = {}
-    missing_labels = []
-
-    for label in labels:
-        activity_code = str(label).upper()
-        activity_path = os.path.join(raw_data_dir, activity_code)
-        pattern = os.path.join(activity_path, "*.csv")
-        count = len(glob.glob(pattern)) if os.path.isdir(activity_path) else 0
-        counts[activity_code] = count
-        if count == 0:
-            missing_labels.append(activity_code)
-
-    return counts, missing_labels
 
 
-def write_data_audit_log(log_path: str, fall_counts: dict, adl_counts: dict,
-                         missing_labels: list):
-    """Ghi ket qua data audit vao log."""
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    lines = [
-        f"[{timestamp}] Data audit (MobiAct Raw Data)",
-        "  Fall label counts: " + ", ".join([f"{k}={v}" for k, v in fall_counts.items()]),
-        "  ADL label counts: " + ", ".join([f"{k}={v}" for k, v in adl_counts.items()]),
-    ]
-    if missing_labels:
-        lines.append("  Missing labels: " + ", ".join(missing_labels))
-    else:
-        lines.append("  Missing labels: none")
-
-    with open(log_path, 'a', encoding='utf-8') as f:
-        f.write("\n".join(lines) + "\n\n")
 
 
-def load_mobiact_data(raw_data_dir: str, sensor_type: str = "acc",
-                      sensors: list = None,
-                      fall_labels: list = None, adl_labels: list = None,
-                      verbose: bool = True) -> tuple:
-    """
-    Tải dữ liệu từ thư mục Raw Data của MobiAct, hỗ trợ gộp nhiều loại cảm biến và xử lý khuyết cảm biến.
-
-    Args:
-        raw_data_dir: Đường dẫn thư mục Raw Data
-        sensor_type: Loại cảm biến mặc định (nếu sensors là None)
-        sensors: Danh sách cảm biến cần dùng (vd: ["acc", "gyro"])
-        fall_labels: Danh sách nhãn fall
-        adl_labels: Danh sách nhãn ADL
-        verbose: In thông tin quá trình tải
-
-    Returns:
-        (all_segments, all_labels, all_subjects):
-            - all_segments: list of np.ndarray, mỗi phần tử là dữ liệu gộp (n_samples, n_channels)
-            - all_labels: list of int (0=ADL, 1=Fall)
-            - all_subjects: list of int (subject IDs)
-    """
-    if sensors is None:
-        sensors = [sensor_type]
-    
-    if fall_labels is None:
-        fall_labels = ["FOL", "FKL", "BSC", "SDL"]
-    if adl_labels is None:
-        adl_labels = ["STD", "WAL", "JOG", "JUM", "STU", "STN",
-                       "SCH", "SIT", "CHU", "CSI", "CSO", "LYI"]
-
-    all_segments = []
-    all_labels = []
-    all_subjects = []
-    
-    skipped_due_to_missing_sensor = 0
-
-    activity_dirs = sorted([d for d in os.listdir(raw_data_dir)
-                           if os.path.isdir(os.path.join(raw_data_dir, d))])
-
-    for activity_dir in activity_dirs:
-        activity_code = activity_dir.upper()
-        activity_path = os.path.join(raw_data_dir, activity_dir)
-
-        if activity_code in fall_labels:
-            label = 1
-        elif activity_code in adl_labels:
-            label = 0
-        else:
-            if verbose:
-                print(f"  Bỏ qua thư mục scenario: {activity_dir}")
-            continue
-
-        # Lấy danh sách file csv (MobiAct Annotated Data có định dạng csv)
-        pattern = os.path.join(activity_path, "*.csv")
-        csv_files = sorted(glob.glob(pattern))
-
-        if not csv_files:
-            if verbose:
-                print(f"  Không tìm thấy file csv cho {activity_code}")
-            continue
-
-        for fpath in csv_files:
-            # Phân tích Subject và Trial từ filename
-            # Format: BSC_10_1_annotated.csv -> parts: [Activity, Subject, Trial, "annotated"]
-            basename = os.path.basename(fpath)
-            parts = basename.replace('.csv', '').split('_')
-            
-            if len(parts) < 3:
-                continue
-            
-            subject_id_str = parts[1]
-            trial_id_str = parts[2]
-            
-            try:
-                df = pd.read_csv(fpath)
-            except Exception:
-                continue
-                
-            if 'acc_x' in df.columns:
-                acc_data = df[['acc_x', 'acc_y', 'acc_z']].values
-            else:
-                continue
-
-            min_len = acc_data.shape[0]
-            if min_len < 10:
-                continue
-                
-            combined_data = None
-            if len(sensors) > 1 and "gyro" in sensors:
-                has_gyro = False
-                if 'gyro_x' in df.columns and not df['gyro_x'].isnull().all():
-                    gyro_data = df[['gyro_x', 'gyro_y', 'gyro_z']].values
-                    has_gyro = True
-                        
-                if has_gyro:
-                    # Flag = 1 báo hiệu là có Gyro xịn
-                    flag_col = np.ones((min_len, 1))
-                    combined_data = np.hstack([acc_data, gyro_data, flag_col])
-                else:
-                    skipped_due_to_missing_sensor += 1
-                    # Thiết kế đắp Zero-Pad (Bù số 0) thay vì ném bỏ toàn bộ file ghi
-                    gyro_pad = np.zeros((min_len, 3))
-                    # Flag = 0 ngầm hiểu là tắt nhánh Gyro trong MultiBranchLSTM
-                    flag_col = np.zeros((min_len, 1))
-                    combined_data = np.hstack([acc_data, gyro_pad, flag_col])
-            else:
-                # Nếu chỉ chạy hệ gốc 'acc'
-                combined_data = acc_data
-
-            all_segments.append(combined_data)
-            all_labels.append(label)
-            all_subjects.append(int(subject_id_str))
-
-    if verbose:
-        n_fall = sum(1 for l in all_labels if l == 1)
-        n_adl = sum(1 for l in all_labels if l == 0)
-        print(f"MobiAct Dataset:")
-        if skipped_due_to_missing_sensor > 0:
-            print(f"  [Warning] Có {skipped_due_to_missing_sensor} recordings đã bị đắp số 0 do thiếu file Gyroscope.")
-        print(f"  Total: {len(all_segments)} recordings "
-              f"({n_adl} ADL, {n_fall} Fall)\n")
-
-    return all_segments, all_labels, all_subjects
 
 
-def load_archive3_data(archive_dir: str, sensors: list = None, verbose: bool = True) -> tuple:
-    """
-    Tải dữ liệu từ thư mục archive (3), vốn KHÔNG CÓ gyro, bù zero pad hoàn toàn nhánh gyro.
-    Đồng thời tự động upsample từ 25 Hz lên 50 Hz.
-    """
-    if sensors is None: sensors = ["acc"]
-    fall_labels = ["freeFall", "runFall", "walkFall"]
-    adl_labels = ["downSit", "runSit", "walkSit"]
-    
-    all_segments = []
-    all_labels = []
-    all_subjects = []
-    
-    if not os.path.exists(archive_dir):
-        if verbose: print(f"Thư mục {archive_dir} không tồn tại!")
-        return [], [], []
-
-    import re
-    import csv
-    import scipy.signal
-    
-    activity_dirs = sorted([d for d in os.listdir(archive_dir) if os.path.isdir(os.path.join(archive_dir, d))])
-    for activity_dir in activity_dirs:
-        activity_path = os.path.join(archive_dir, activity_dir)
-        
-        if activity_dir in fall_labels:
-            label = 1
-        elif activity_dir in adl_labels:
-            label = 0
-        else:
-            continue
-            
-        csv_files = glob.glob(os.path.join(activity_path, "*.csv"))
-        for fpath in csv_files:
-            basename = os.path.basename(fpath)
-            num_match = re.search(r'\d+', basename)
-            subj = int(num_match.group()) if num_match else 0
-            subject_id = 9000 + subj # Offset dải Subject tránh đụng độ với MobiAct
-            
-            try:
-                acc_lines = []
-                with open(fpath, 'r', encoding='utf-8') as f:
-                    reader = csv.reader(f, delimiter=';')
-                    next(reader, None) # Skip headers
-                    for row in reader:
-                        if len(row) >= 6:
-                            try:
-                                acc_lines.append([float(row[3]), float(row[4]), float(row[5])])
-                            except ValueError:
-                                pass
-                acc_data = np.array(acc_lines)
-                if len(acc_data) < 10: continue
-                
-                # Upsample x2 từ 25 Hz về tương đương chuẩn 50 Hz
-                new_len = len(acc_data) * 2
-                acc_resampled = scipy.signal.resample(acc_data, new_len)
-                
-                if len(sensors) > 1 and "gyro" in sensors:
-                    gyro_pad = np.zeros((new_len, 3))
-                    flag_col = np.zeros((new_len, 1)) # Bắt buộc là 0 để Mạng loại bỏ nhiễu nhánh Gyro
-                    combined_data = np.hstack([acc_resampled, gyro_pad, flag_col])
-                else:
-                    combined_data = acc_resampled
-                    
-                all_segments.append(combined_data)
-                all_labels.append(label)
-                all_subjects.append(subject_id)
-            except Exception as e:
-                continue
-                
-    if verbose:
-        n_fall = sum(1 for l in all_labels if l == 1)
-        n_adl = sum(1 for l in all_labels if l == 0)
-        print(f"Archive (3) Dataset:")
-        print(f"  Total: {len(all_segments)} recordings "
-              f"({n_adl} ADL, {n_fall} Fall)\n")
-        
-    return all_segments, all_labels, all_subjects
-
-
-def load_sisfall_data(sisfall_dir: str, sensors: list = None, verbose: bool = True) -> tuple:
-    """
-    Tải dữ liệu từ thư mục SisFall.
-    Tự động downsample từ 200 Hz về 50 Hz.
-    Phân mảnh và gán Subject ID (SA -> 1000+, SE -> 2000+).
-    """
-    if sensors is None: sensors = ["acc"]
-    
-    all_segments = []
-    all_labels = []
-    all_subjects = []
-    
-    if not os.path.exists(sisfall_dir):
-        if verbose: print(f"Thư mục {sisfall_dir} không tồn tại!")
-        return [], [], []
-
-    import re
-    import csv
-    
-    # Quét tất cả các thư mục SA* và SE*
-    subject_dirs = sorted([d for d in os.listdir(sisfall_dir) if os.path.isdir(os.path.join(sisfall_dir, d)) and (d.startswith('SA') or d.startswith('SE'))])
-    
-    for subj_dir in subject_dirs:
-        subj_path = os.path.join(sisfall_dir, subj_dir)
-        subj_prefix = subj_dir[:2]
-        
-        try:
-            subj_num = int(subj_dir[2:])
-            if subj_prefix == 'SA':
-                subject_id = 1000 + subj_num
-            else:
-                subject_id = 2000 + subj_num
-        except ValueError:
-            continue
-            
-        txt_files = glob.glob(os.path.join(subj_path, "*.txt"))
-        for fpath in txt_files:
-            basename = os.path.basename(fpath)
-            # Tên file: D01_SA01_R01.txt hoặc F01_SA01_R01.txt
-            if basename.startswith('F'):
-                label = 1
-            elif basename.startswith('D'):
-                label = 0
-            else:
-                continue
-                
-            try:
-                data_lines = []
-                with open(fpath, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line: continue
-                        # Dấu chấm phẩy ở cuối dòng
-                        if line.endswith(';'):
-                            line = line[:-1]
-                        parts = line.split(',')
-                        if len(parts) >= 9:
-                            try:
-                                # acc X, Y, Z (cột 0, 1, 2)
-                                line_vals = [float(p.strip()) for p in parts[:9]]
-                                data_lines.append(line_vals)
-                            except ValueError:
-                                pass
-                                
-                data = np.array(data_lines)
-                if len(data) < 40: # Rất ngắn
-                    continue
-                    
-                # Downsample 200Hz -> 50Hz (Lấy mỗi 4 sample)
-                data_downsampled = data[::4, :]
-                
-                # Tách acc và gyro
-                acc_data = data_downsampled[:, :3] # Cột 0,1,2
-                
-                if len(sensors) > 1 and "gyro" in sensors:
-                    gyro_data = data_downsampled[:, 3:6] # Cột 3,4,5
-                    # Do Gyro từ SisFall có sẵn, không cần tạo mask 0, nên gán flag = 1
-                    flag_col = np.ones((len(data_downsampled), 1)) 
-                    combined_data = np.hstack([acc_data, gyro_data, flag_col])
-                else:
-                    combined_data = acc_data
-                    
-                all_segments.append(combined_data)
-                all_labels.append(label)
-                all_subjects.append(subject_id)
-            except Exception as e:
-                continue
-                
-    if verbose:
-        n_fall = sum(1 for l in all_labels if l == 1)
-        n_adl = sum(1 for l in all_labels if l == 0)
-        print(f"SisFall Dataset:")
-        print(f"  Total: {len(all_segments)} recordings "
-              f"({n_adl} ADL, {n_fall} Fall)\n")
-              
-    return all_segments, all_labels, all_subjects
 
 
 
@@ -473,124 +135,12 @@ def create_windows(data: np.ndarray, window_size: int = 100,
 # 3. Preprocessing Pipeline
 # ============================================================
 
-def preprocess_data(segments: list, labels: list, subjects: list,
-                    config: dict) -> tuple:
-    """
-    Pipeline tiền xử lý hoàn chỉnh:
-    1. Low-pass filter
-    2. Windowing
-    3. Gom tất cả windows
-
-    Args:
-        segments: Danh sách dữ liệu thô (mỗi phần tử là 1 recording)
-        labels: Danh sách nhãn tương ứng
-        subjects: Danh sách subject IDs
-        config: Dictionary chứa cấu hình
-
-    Returns:
-        (X, y, subject_ids):
-            - X: (n_total_windows, window_size, n_channels)
-            - y: (n_total_windows,)
-            - subject_ids: (n_total_windows,)
-    """
-    preproc_cfg = config.get('preprocessing', {})
-    data_cfg = config.get('data', {})
-
-    window_size = data_cfg.get('window_size', 100)
-    overlap = data_cfg.get('overlap', 0.15)
-    fs = data_cfg.get('sampling_rate', 50)
-
-    # Bộ lọc low-pass
-    filter_cfg = preproc_cfg.get('lowpass_filter', {})
-    use_filter = filter_cfg.get('enabled', True)
-    cutoff = filter_cfg.get('cutoff_freq', 20)
-    order = filter_cfg.get('order', 4)
-
-    all_windows = []
-    all_window_labels = []
-    all_window_subjects = []
-
-    for seg, lbl, subj in zip(segments, labels, subjects):
-        # Bước 1: Lọc low-pass
-        if use_filter and seg.shape[0] > 20:
-            seg_filtered = apply_lowpass_filter(seg, cutoff=cutoff,
-                                                fs=fs, order=order)
-        else:
-            seg_filtered = seg
-
-        # Bước 2: Windowing
-        windows = create_windows(seg_filtered, window_size=window_size,
-                                 overlap=overlap)
-
-        if windows.shape[0] > 0:
-            all_windows.append(windows)
-            all_window_labels.extend([lbl] * windows.shape[0])
-            all_window_subjects.extend([subj] * windows.shape[0])
-
-    if not all_windows:
-        n_channels = segments[0].shape[1] if segments else 3
-        return (np.array([]).reshape(0, window_size, n_channels),
-                np.array([]),
-                np.array([]))
-
-    X = np.concatenate(all_windows, axis=0)
-    y = np.array(all_window_labels)
-    subject_ids = np.array(all_window_subjects)
-
-    return X, y, subject_ids
 
 
 # ============================================================
 # 4. Phân chia dữ liệu theo Subject ID
 # ============================================================
 
-def split_by_subject(X: np.ndarray, y: np.ndarray, subject_ids: np.ndarray,
-                     train_ratio: float = 0.70, val_ratio: float = 0.15,
-                     test_ratio: float = 0.15, seed: int = 42) -> dict:
-    """
-    Phân chia dữ liệu thành Train/Validation/Test theo subject ID
-    để tránh data leakage (cùng 1 subject không xuất hiện ở 2 tập).
-
-    Args:
-        X: Dữ liệu windows
-        y: Nhãn
-        subject_ids: Subject IDs cho mỗi window
-        train_ratio, val_ratio, test_ratio: Tỷ lệ phân chia
-        seed: Random seed
-
-    Returns:
-        dict chứa X_train, y_train, X_val, y_val, X_test, y_test
-    """
-    unique_subjects = np.unique(subject_ids)
-    np.random.seed(seed)
-    np.random.shuffle(unique_subjects)
-
-    n_subjects = len(unique_subjects)
-    n_train = max(1, int(n_subjects * train_ratio))
-    n_val = max(1, int(n_subjects * val_ratio))
-
-    train_subjects = set(unique_subjects[:n_train])
-    val_subjects = set(unique_subjects[n_train:n_train + n_val])
-    test_subjects = set(unique_subjects[n_train + n_val:])
-
-    # Nếu test_subjects rỗng, lấy từ val
-    if not test_subjects:
-        test_subjects = val_subjects
-
-    train_mask = np.array([s in train_subjects for s in subject_ids])
-    val_mask = np.array([s in val_subjects for s in subject_ids])
-    test_mask = np.array([s in test_subjects for s in subject_ids])
-
-    splits = {
-        'X_train': X[train_mask], 'y_train': y[train_mask],
-        'X_val': X[val_mask], 'y_val': y[val_mask],
-        'X_test': X[test_mask], 'y_test': y[test_mask],
-        'train_subjects': train_subjects,
-        'val_subjects': val_subjects,
-        'test_subjects': test_subjects,
-    }
-
-    return splits
 
 
 # ============================================================
@@ -633,73 +183,6 @@ class FallDetectionDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 
-def create_dataloaders(splits: dict, config: dict, scaler=None) -> dict:
-    """
-    Tạo DataLoaders từ dữ liệu đã phân chia.
-
-    Args:
-        splits: Dict từ split_by_subject()
-        config: Dict cấu hình
-        scaler: Scaler object (nếu None sẽ tạo mới)
-
-    Returns:
-        dict chứa train_loader, val_loader, test_loader, scaler
-    """
-    batch_size = config.get('training', {}).get('batch_size', 64)
-    norm_method = config.get('preprocessing', {}).get('normalization', 'standard')
-
-    if scaler is None and norm_method != 'none':
-        scaler = get_scaler(norm_method)
-
-    # Tạo datasets
-    train_dataset = FallDetectionDataset(
-        splits['X_train'], splits['y_train'],
-        scaler=scaler, fit_scaler=True
-    )
-    # Dùng scaler đã fit từ train cho val và test
-    fitted_scaler = train_dataset.scaler
-
-    val_dataset = FallDetectionDataset(
-        splits['X_val'], splits['y_val'],
-        scaler=fitted_scaler, fit_scaler=False
-    )
-    test_dataset = FallDetectionDataset(
-        splits['X_test'], splits['y_test'],
-        scaler=fitted_scaler, fit_scaler=False
-    )
-
-    # Tính toán weight cho imbalanced data
-    use_sampler = config.get('training', {}).get('use_sampler', True)
-    if use_sampler:
-        # Tự động tính weight dựa trên số mẫu hiện tại
-        class_counts = [np.sum(splits['y_train'] == 0), np.sum(splits['y_train'] == 1)]
-        total_samples = len(splits['y_train'])
-        class_weights = [total_samples / c if c > 0 else 0 for c in class_counts]
-        
-        sample_weights = [class_weights[int(label)] for label in splits['y_train']]
-        sampler = WeightedRandomSampler(
-            weights=sample_weights, 
-            num_samples=total_samples, 
-            replacement=True
-        )
-        
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                                  sampler=sampler, drop_last=False, num_workers=0)
-    else:
-        train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                                  shuffle=True, drop_last=False, num_workers=0)
-
-    val_loader = DataLoader(val_dataset, batch_size=batch_size,
-                            shuffle=False, drop_last=False, num_workers=0)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size,
-                             shuffle=False, drop_last=False, num_workers=0)
-
-    return {
-        'train_loader': train_loader,
-        'val_loader': val_loader,
-        'test_loader': test_loader,
-        'scaler': fitted_scaler,
-    }
 
 
 # ============================================================
@@ -708,146 +191,60 @@ def create_dataloaders(splits: dict, config: dict, scaler=None) -> dict:
 
 def prepare_data(config: dict, verbose: bool = True) -> dict:
     """
-    Pipeline đầy đủ: Load → Preprocess → Split → DataLoader.
-
-    Args:
-        config: Dict cấu hình từ config.yaml
-        verbose: In thông tin
-
-    Returns:
-        dict chứa dataloaders, scaler, splits info
+    Tải trực tiếp dữ liệu đã tiền xử lý Sisfall (.npy) và Scaler (.pkl).
     """
-    data_cfg = config['data']
-    fall_labels = data_cfg.get('fall_labels', ["FOL", "FKL", "BSC", "SDL"])
-    adl_labels = data_cfg.get(
-        'adl_labels',
-        ["STD", "WAL", "JOG", "JUM", "STU", "STN", "SCH", "SIT", "CHU", "CSI", "CSO", "LYI"]
-    )
-    strict_label_check = data_cfg.get('strict_label_check', False)
-    audit_sensor_type = data_cfg.get('sensor_type', 'acc')
-
-    # Audit data truoc khi tai de canh bao label thieu
-    fall_counts, missing_fall = audit_activity_file_counts(
-        raw_data_dir=data_cfg['raw_data_dir'],
-        labels=fall_labels,
-        sensor_type=audit_sensor_type
-    )
-    adl_counts, missing_adl = audit_activity_file_counts(
-        raw_data_dir=data_cfg['raw_data_dir'],
-        labels=adl_labels,
-        sensor_type=audit_sensor_type
-    )
-    missing_labels = sorted(set(missing_fall + missing_adl))
-
-    log_dir = config.get('paths', {}).get('log_dir', 'logs')
-    audit_log_path = os.path.join(log_dir, 'data_audit.log')
-    write_data_audit_log(audit_log_path, fall_counts, adl_counts, missing_labels)
-
-    if verbose:
-        print("Data audit:")
-        print(f"  Log file: {audit_log_path}")
-        if missing_labels:
-            print(f"  [Warning] Missing labels in raw data: {', '.join(missing_labels)}")
-        else:
-            print("  All configured labels have data files.")
-
-    if strict_label_check and missing_labels:
-        raise ValueError(
-            "strict_label_check=True va phat hien label khong co du lieu: "
-            + ", ".join(missing_labels)
-        )
-
-    # Bước 1: Tải dữ liệu
+    data_dir = config['data'].get('data_dir', 'dataset/sisfall_processed')
+    import pickle
+    
     if verbose:
         print("=" * 50)
-        print("BƯỚC 1: Tải dữ liệu MobiAct...")
-    segments, labels, subjects = load_mobiact_data(
-        raw_data_dir=data_cfg['raw_data_dir'],
-        sensor_type=data_cfg.get('sensor_type', 'acc'),
-        sensors=data_cfg.get('sensors', ['acc']),
-        fall_labels=fall_labels,
-        adl_labels=adl_labels,
-        verbose=verbose
-    )
-    
-    # Bổ sung dữ liệu Archive 3
-    if verbose:
-        print("Tải dữ liệu phân mảnh (Archive 3)...")
-    
-    # Ưu tiên lấy đường dẫn từ config, nếu không có thì fallback tự suy luận như cũ
-    default_archive_dir = os.path.join(os.path.dirname(data_cfg.get('raw_data_dir', 'dataset')), "archive (3)")
-    archive_dir = data_cfg.get('archive_data_dir', default_archive_dir)
-    
-    a3_segs, a3_lbls, a3_subjs = load_archive3_data(
-        archive_dir=archive_dir,
-        sensors=data_cfg.get('sensors', ['acc']),
-        verbose=verbose
-    )
-    segments.extend(a3_segs)
-    labels.extend(a3_lbls)
-    subjects.extend(a3_subjs)
-
-    # Bổ sung dữ liệu SisFall
-    if verbose:
-        print("Tải dữ liệu phân mảnh (SisFall)...")
+        print(f"🚀 BƯỚC 1: Tải dữ liệu Preprocessed từ {data_dir}...")
         
-    sisfall_dir = data_cfg.get('sisfall_data_dir', os.path.join(os.path.dirname(data_cfg.get('raw_data_dir', 'dataset')), "sisfall"))
+    X_train = np.load(os.path.join(data_dir, 'step6_X_train_scaled.npy'))
+    y_train = np.load(os.path.join(data_dir, 'step5_y_train.npy'))
+    X_val = np.load(os.path.join(data_dir, 'step6_X_val_scaled.npy'))
+    y_val = np.load(os.path.join(data_dir, 'step5_y_val.npy'))
+    X_test = np.load(os.path.join(data_dir, 'step6_X_test_scaled.npy'))
+    y_test = np.load(os.path.join(data_dir, 'step5_y_test.npy'))
     
-    sf_segs, sf_lbls, sf_subjs = load_sisfall_data(
-        sisfall_dir=sisfall_dir,
-        sensors=data_cfg.get('sensors', ['acc']),
-        verbose=verbose
-    )
-    segments.extend(sf_segs)
-    labels.extend(sf_lbls)
-    subjects.extend(sf_subjs)
-
-    if not segments:
-        raise ValueError("Khong tim thay du lieu! "
-                         "Kiem tra duong dan raw_data_dir trong config.")
-
-    # Bước 2: Tiền xử lý + Windowing
+    with open(os.path.join(data_dir, 'step6_scaler.pkl'), 'rb') as f:
+        scaler = pickle.load(f)
+        
     if verbose:
-        print("\nBƯỚC 2: Tiền xử lý & Windowing...")
-    X, y, subject_ids = preprocess_data(segments, labels, subjects, config)
+        print(f"  Train: X={X_train.shape}, y={y_train.shape}")
+        print(f"  Val:   X={X_val.shape}, y={y_val.shape}")
+        print(f"  Test:  X={X_test.shape}, y={y_test.shape}")
 
-    if verbose:
-        print(f"  Tổng windows: {X.shape[0]}")
-        print(f"  Window shape: ({X.shape[1]}, {X.shape[2]})")
-        print(f"  Phân bố nhãn: ADL={np.sum(y == 0)}, Fall={np.sum(y == 1)}")
+    train_dataset = FallDetectionDataset(X_train, y_train, scaler=None)
+    val_dataset = FallDetectionDataset(X_val, y_val, scaler=None)
+    test_dataset = FallDetectionDataset(X_test, y_test, scaler=None)
 
-    # Bước 3: Phân chia dữ liệu theo Subject
-    if verbose:
-        print("\nBƯỚC 3: Phân chia dữ liệu...")
-    splits = split_by_subject(
-        X, y, subject_ids,
-        train_ratio=data_cfg.get('train_ratio', 0.70),
-        val_ratio=data_cfg.get('val_ratio', 0.15),
-        test_ratio=data_cfg.get('test_ratio', 0.15),
-        seed=config.get('seed', 42)
-    )
+    batch_size = config.get('training', {}).get('batch_size', 64)
+    use_sampler = config.get('training', {}).get('use_sampler', True)
+    
+    if use_sampler:
+        class_counts = [np.sum(y_train == 0), np.sum(y_train == 1)]
+        total_samples = len(y_train)
+        class_weights = [total_samples / c if c > 0 else 0 for c in class_counts]
+        sample_weights = [class_weights[int(label)] for label in y_train]
+        
+        sampler = WeightedRandomSampler(
+            weights=sample_weights, num_samples=total_samples, replacement=True
+        )
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, sampler=sampler, drop_last=False, num_workers=0)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=False, num_workers=0)
 
-    if verbose:
-        print(f"  Train: {splits['X_train'].shape[0]} windows")
-        print(f"  Val:   {splits['X_val'].shape[0]} windows")
-        print(f"  Test:  {splits['X_test'].shape[0]} windows")
-
-    # Bước 4: Tạo DataLoaders
-    if verbose:
-        print("\nBƯỚC 4: Tạo DataLoaders...")
-    loaders = create_dataloaders(splits, config)
-
-    if verbose:
-        print("  ✓ DataLoaders đã sẵn sàng!")
-        print("=" * 50)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, drop_last=False, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=False, num_workers=0)
 
     return {
-        'train_loader': loaders['train_loader'],
-        'val_loader': loaders['val_loader'],
-        'test_loader': loaders['test_loader'],
-        'scaler': loaders['scaler'],
-        'splits': splits,
+        'train_loader': train_loader,
+        'val_loader': val_loader,
+        'test_loader': test_loader,
+        'scaler': scaler,
     }
+
 
 
 # ============================================================
