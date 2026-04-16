@@ -28,11 +28,11 @@ data:
   val_ratio: 0.15
   test_ratio: 0.15
   strict_label_check: false
-  data_dir: dataset/MobiAct_Processed
+  data_dir: dataset/sisfall_processed
 model:
   type: ensemble_lstm
   threshold: 0.8
-  input_size: 9
+  input_size: 6
   lstm:
     hidden_size: 30
     num_layers: 2

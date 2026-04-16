@@ -201,9 +201,20 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
         print(f"🚀 BƯỚC 1: Tải dữ liệu Preprocessed từ {data_dir}...")
         
     # Tự động dò tìm cơ sở dữ liệu Sisfall hoặc MobiAct
-    prefix_X = 'step6_' if os.path.exists(os.path.join(data_dir, 'step6_X_train_scaled.npy')) else ''
-    suffix_X = '_scaled' if prefix_X else ''
-    prefix_y = 'step5_' if prefix_X else ''
+    # Tự động dò tìm cơ sở dữ liệu (50Hz Sisfall -> 200Hz Sisfall -> MobiAct)
+    if os.path.exists(os.path.join(data_dir, 'step6_5_X_train_downsampled.npy')):
+        prefix_X = 'step6_5_'
+        suffix_X = '_downsampled'
+        prefix_y = 'step6_5_'
+    elif os.path.exists(os.path.join(data_dir, 'step6_X_train_scaled.npy')):
+        prefix_X = 'step6_'
+        suffix_X = '_scaled'
+        prefix_y = 'step5_'
+    else:
+        prefix_X = ''
+        suffix_X = ''
+        prefix_y = ''
+
     scaler_file = 'step6_scaler.pkl' if os.path.exists(os.path.join(data_dir, 'step6_scaler.pkl')) else 'scaler.pkl'
 
     X_train = np.load(os.path.join(data_dir, f'{prefix_X}X_train{suffix_X}.npy'))
