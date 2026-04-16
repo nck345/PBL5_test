@@ -200,14 +200,20 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
         print("=" * 50)
         print(f"🚀 BƯỚC 1: Tải dữ liệu Preprocessed từ {data_dir}...")
         
-    X_train = np.load(os.path.join(data_dir, 'step6_X_train_scaled.npy'))
-    y_train = np.load(os.path.join(data_dir, 'step5_y_train.npy'))
-    X_val = np.load(os.path.join(data_dir, 'step6_X_val_scaled.npy'))
-    y_val = np.load(os.path.join(data_dir, 'step5_y_val.npy'))
-    X_test = np.load(os.path.join(data_dir, 'step6_X_test_scaled.npy'))
-    y_test = np.load(os.path.join(data_dir, 'step5_y_test.npy'))
+    # Tự động dò tìm cơ sở dữ liệu Sisfall hoặc MobiAct
+    prefix_X = 'step6_' if os.path.exists(os.path.join(data_dir, 'step6_X_train_scaled.npy')) else ''
+    suffix_X = '_scaled' if prefix_X else ''
+    prefix_y = 'step5_' if prefix_X else ''
+    scaler_file = 'step6_scaler.pkl' if os.path.exists(os.path.join(data_dir, 'step6_scaler.pkl')) else 'scaler.pkl'
+
+    X_train = np.load(os.path.join(data_dir, f'{prefix_X}X_train{suffix_X}.npy'))
+    y_train = np.load(os.path.join(data_dir, f'{prefix_y}y_train.npy'))
+    X_val   = np.load(os.path.join(data_dir, f'{prefix_X}X_val{suffix_X}.npy'))
+    y_val   = np.load(os.path.join(data_dir, f'{prefix_y}y_val.npy'))
+    X_test  = np.load(os.path.join(data_dir, f'{prefix_X}X_test{suffix_X}.npy'))
+    y_test  = np.load(os.path.join(data_dir, f'{prefix_y}y_test.npy'))
     
-    with open(os.path.join(data_dir, 'step6_scaler.pkl'), 'rb') as f:
+    with open(os.path.join(data_dir, scaler_file), 'rb') as f:
         scaler = pickle.load(f)
         
     if verbose:

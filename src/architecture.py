@@ -143,6 +143,11 @@ class MultiBranchLSTM(nn.Module):
             acc_x = x[:, :, 0:3]
             gyro_x = x[:, :, 3:6]
             has_gyro_mask = torch.ones(x.shape[0], 1, device=x.device)
+        elif x.shape[2] >= 9:
+            # Drop 3 kênh cuối (Orientation) của MobiAct, chỉ nạp Acc và Gyro cho nhánh song song
+            acc_x = x[:, :, 0:3]
+            gyro_x = x[:, :, 3:6]
+            has_gyro_mask = torch.ones(x.shape[0], 1, device=x.device)
         else:
             acc_x = x[:, :, 0:3]
             gyro_x = x[:, :, 3:6]
@@ -317,9 +322,8 @@ def build_model(config: dict) -> nn.Module:
     num_classes = model_cfg.get('num_classes', 1)
     window_size = config.get('data', {}).get('window_size', 100)
     
-    # Cố định input_size là 6 kênh (Acc + Gyro) hoặc 3 kênh (Acc)
-    sensors = config.get('data', {}).get('sensors', ['acc'])
-    input_size = 6 if len(sensors) > 1 else 3
+    # Kéo động kích cỡ đầu vào dựa trên file config.yaml (6 cho Sisfall, 9 cho MobiAct)
+    input_size = config.get('model', {}).get('input_size', 6)
 
     if model_type == 'stacked_lstm':
         lstm_cfg = model_cfg.get('lstm', {})

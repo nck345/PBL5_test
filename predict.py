@@ -159,8 +159,8 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
     result = load_predict_data(filepath, sensors)
     data = result.get('data', np.array([]))
 
-    # Loại bỏ cờ padding Gyro (kênh 7) vì tập numpy chuẩn được trích xuất với 6 kênh
-    if data.shape[1] == 7:
+    # Loại bỏ cờ padding (kênh 7) đối với mô hình thiết kế 6 kênh
+    if data.shape[1] == 7 and config.get('model', {}).get('input_size', 6) == 6:
         data = data[:, :6]
 
     if data.shape[0] < 10:
@@ -227,8 +227,8 @@ def stream_predict(filepath: str, model: torch.nn.Module, config: dict,
     result = load_predict_data(filepath, sensors)
     data = result.get('data', np.array([]))
 
-    # Loại bỏ cờ padding Gyro (kênh 7) vì tập numpy chuẩn được trích xuất với 6 kênh
-    if data.shape[1] == 7:
+    # Loại bỏ cờ padding (kênh 7) đối với mô hình thiết kế 6 kênh
+    if data.shape[1] == 7 and config.get('model', {}).get('input_size', 6) == 6:
         data = data[:, :6]
 
     if data.shape[0] < 10:
@@ -369,7 +369,10 @@ def main():
     # 2.5 Load Scaler
     # ========================================
     import pickle
-    scaler_path = os.path.join(config['data'].get('data_dir', 'dataset/sisfall_processed'), 'step6_scaler.pkl')
+    data_dir = config['data'].get('data_dir', 'dataset/sisfall_processed')
+    scaler_path_1 = os.path.join(data_dir, 'step6_scaler.pkl')
+    scaler_path_2 = os.path.join(data_dir, 'scaler.pkl')
+    scaler_path = scaler_path_1 if os.path.exists(scaler_path_1) else scaler_path_2
     try:
         with open(scaler_path, 'rb') as f:
             scaler = pickle.load(f)
