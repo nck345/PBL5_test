@@ -5,13 +5,13 @@ Online Inference - Dự đoán thời gian thực phát hiện té ngã.
 
 Usage:
     # Dự đoán từ file
-    python predict.py --input "dataset/Raw Data/WAL/WAL_acc_1_1.txt"
+    python predict.py --input "duong_dan_file_arduino_cua_ban.txt"
 
     # Dự đoán từ thư mục (nhiều file)
-    python predict.py --input "dataset/Raw Data/WAL/"
+    python predict.py --input "thu_muc_chua_nhieu_file_txt/"
 
     # Chế độ streaming simulation
-    python predict.py --input "dataset/Raw Data/WAL/WAL_acc_1_1.txt" --stream
+    python predict.py --input "duong_dan_file_arduino_cua_ban.txt" --stream
 """
 
 import argparse

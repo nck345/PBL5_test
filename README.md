@@ -45,22 +45,22 @@ python test.py --model lstm
 
 ### 3. Dự đoán (Predict)
 
-**Ghi chú:** Khi dùng dự đoán bằng lệnh python, bạn luôn phải đưa đường dẫn vào sau đối số `--input`.
+**Ghi chú:** Khi dùng dự đoán bằng lệnh python, bạn luôn phải đưa đường dẫn dữ liệu thu từ con chip IOT (định dạng txt, csv) vào sau đối số `--input`. Các tập Raw cũ trên máy đã bị dọn dẹp nên hãy trỏ tới file của riêng bạn nhé!
 
 Quét 1 file và tự động lưu báo cáo mặc định:
-python predict.py --input "dataset/MobiAct/Raw Data/SCH/SCH_acc_10_2.txt"
+python predict.py --input "duong_dan_file_arduino_cua_ban.txt"
 
 Quét 1 file, lưu báo cáo với tên file chỉ định:
-python predict.py --input "dataset/MobiAct/Raw Data/SCH/SCH_acc_10_2.txt" bao_cao_cua_toi.txt
+python predict.py --input "duong_dan_file_arduino_cua_ban.txt" bao_cao_cua_toi.txt
 
 Quét Streaming 1 file, tự động lưu nhật ký mặc định (đuôi json):
-python predict.py --input "dataset/MobiAct/Raw Data/SCH/SCH_acc_10_2.txt" --stream
+python predict.py --input "duong_dan_file_arduino_cua_ban.txt" --stream
 
 Quét Streaming 1 file, lưu nhật ký thành tên json chỉ định:
-python predict.py --input "dataset/MobiAct/Raw Data/SCH/SCH_acc_10_2.txt" --stream nhat_ky_trinh_dien.json
+python predict.py --input "duong_dan_file_arduino_cua_ban.txt" --stream nhat_ky_trinh_dien.json
 
 Quét TOÀN BỘ THƯ MỤC và tự động lưu báo cáo mặc định:
-python predict.py --input "dataset/MobiAct/Raw Data/SCH"
+python predict.py --input "thu_muc_chua_nhieu_file_txt"
 
 Quét TOÀN BỘ THƯ MỤC, lưu báo cáo thành tên txt chỉ định:
-python predict.py --input "dataset/MobiAct/Raw Data/SCH" bao_cao_tong_ket.txt
+python predict.py --input "thu_muc_chua_nhieu_file_txt" bao_cao_tong_ket.txt
