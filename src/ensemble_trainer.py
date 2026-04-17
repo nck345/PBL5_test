@@ -274,6 +274,8 @@ class EnsembleTrainer:
                         best_base_val_loss = val_loss
                         best_base_model_state = copy.deepcopy(base_model.state_dict())
                         base_patience_counter = 0
+                        if verbose:
+                            print(f"  -> Saved best base model state (val_loss: {val_loss:.4f})")
                     else:
                         base_patience_counter += 1
 
