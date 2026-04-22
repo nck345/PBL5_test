@@ -30,7 +30,7 @@ data:
   strict_label_check: false
   data_dir: dataset/sisfall_processed
 model:
-  type: ensemble_lstm
+  type: ensemble
   threshold: 0.8
   input_size: 6
   lstm:

@@ -107,7 +107,7 @@ def main():
     all_roc_data = {}
     all_metrics = {}
     
-    models_to_train = ['lstm', 'stacked_lstm', 'ensemble_lstm']
+    models_to_train = ['lstm', 'stacked_lstm', 'ensemble']
     
     print(f"\nSTARTING TRAINING SEQUENCE: {models_to_train}\n")
     print("="*60)
@@ -133,7 +133,7 @@ def main():
         print(f"  Total parameters: {n_params:,}")
         
         # Train
-        if current_model == 'ensemble_lstm':
+        if current_model == 'ensemble':
             trainer = EnsembleTrainer(model, config, device)
         else:
             trainer = Trainer(model, config, device)

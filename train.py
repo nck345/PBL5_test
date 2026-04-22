@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=None,
                         help='Learning rate (ghi đè config)')
     parser.add_argument('--model', type=str, default=None,
-                        choices=['lstm', 'stacked_lstm', 'ensemble_lstm'],
+                        choices=['lstm', 'stacked_lstm', 'ensemble'],
                         help='Loại model (ghi đè config)')
     parser.add_argument('--device', type=str, default=None,
                         help='Device: auto, cpu, cuda')
@@ -106,7 +106,7 @@ def main():
     # ========================================
     # 5. Huấn luyện
     # ========================================
-    if config['model']['type'] == 'ensemble_lstm':
+    if config['model']['type'] == 'ensemble':
         trainer = EnsembleTrainer(model, config, device)
     else:
         trainer = Trainer(model, config, device)

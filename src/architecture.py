@@ -352,7 +352,7 @@ def build_model(config: dict) -> nn.Module:
             num_classes=num_classes
         )
 
-    elif model_type == 'ensemble_lstm':
+    elif model_type == 'ensemble':
         ensemble_cfg = model_cfg.get('ensemble', {})
         lstm_cfg = model_cfg.get('lstm', {})
         model = EnsembleLSTM(
@@ -367,7 +367,7 @@ def build_model(config: dict) -> nn.Module:
 
     else:
         raise ValueError(f"Loại model không hợp lệ: {model_type}. "
-                         f"Chọn: lstm, stacked_lstm, ensemble_lstm")
+                         f"Chọn: lstm, stacked_lstm, ensemble")
 
     return model
 
