@@ -191,50 +191,80 @@ class FallDetectionDataset(Dataset):
 
 def prepare_data(config: dict, verbose: bool = True) -> dict:
     """
-    Tải trực tiếp dữ liệu đã tiền xử lý Sisfall (.npy) và Scaler (.pkl).
+    Nạp dữ liệu từ nhiều dataset (MobiAct, SisFall, etc.), gộp lại và chuẩn hóa chung.
     """
-    data_dir = config['data'].get('data_dir', 'dataset/sisfall_processed')
     import pickle
+    from sklearn.preprocessing import StandardScaler
+
+    data_config = config.get('data', {})
     
+    # Hỗ trợ cả 'data_dirs' (list) và 'data_dir' (chuỗi) để tương thích ngược
+    if 'data_dirs' in data_config:
+        data_dirs = data_config['data_dirs']
+    else:
+        data_dirs = [data_config.get('data_dir', 'dataset/sisfall_processed')]
+
     if verbose:
         print("=" * 50)
-        print(f"🚀 BƯỚC 1: Tải dữ liệu Preprocessed từ {data_dir}...")
+        print("🚀 BƯỚC 1: Tải và Nạp Động dữ liệu (Dynamic Loading)...")
         
-    # Tự động dò tìm cơ sở dữ liệu Sisfall hoặc MobiAct
-    # Tự động dò tìm cơ sở dữ liệu (50Hz Sisfall -> 200Hz Sisfall -> MobiAct)
-    if os.path.exists(os.path.join(data_dir, 'step6_5_X_train_downsampled.npy')):
-        prefix_X = 'step6_5_'
-        suffix_X = '_downsampled'
-        prefix_y = 'step6_5_'
-    elif os.path.exists(os.path.join(data_dir, 'step6_X_train_scaled.npy')):
-        prefix_X = 'step6_'
-        suffix_X = '_scaled'
-        prefix_y = 'step5_'
-    else:
-        prefix_X = ''
-        suffix_X = ''
-        prefix_y = ''
+    X_train_list, y_train_list = [], []
+    X_val_list, y_val_list = [], []
+    X_test_list, y_test_list = [], []
 
-    scaler_file = 'step6_scaler.pkl' if os.path.exists(os.path.join(data_dir, 'step6_scaler.pkl')) else 'scaler.pkl'
-
-    X_train = np.load(os.path.join(data_dir, f'{prefix_X}X_train{suffix_X}.npy'))
-    y_train = np.load(os.path.join(data_dir, f'{prefix_y}y_train.npy'))
-    X_val   = np.load(os.path.join(data_dir, f'{prefix_X}X_val{suffix_X}.npy'))
-    y_val   = np.load(os.path.join(data_dir, f'{prefix_y}y_val.npy'))
-    X_test  = np.load(os.path.join(data_dir, f'{prefix_X}X_test{suffix_X}.npy'))
-    y_test  = np.load(os.path.join(data_dir, f'{prefix_y}y_test.npy'))
-    
-    with open(os.path.join(data_dir, scaler_file), 'rb') as f:
-        scaler = pickle.load(f)
+    for data_dir in data_dirs:
+        if verbose:
+            print(f"  - Đang nạp từ: {data_dir}")
         
+        # Load các file chưa scale
+        try:
+            X_train_list.append(np.load(os.path.join(data_dir, 'X_train.npy')))
+            y_train_list.append(np.load(os.path.join(data_dir, 'y_train.npy')))
+            X_val_list.append(np.load(os.path.join(data_dir, 'X_val.npy')))
+            y_val_list.append(np.load(os.path.join(data_dir, 'y_val.npy')))
+            X_test_list.append(np.load(os.path.join(data_dir, 'X_test.npy')))
+            y_test_list.append(np.load(os.path.join(data_dir, 'y_test.npy')))
+        except FileNotFoundError as e:
+            print(f"  ⚠️ Lỗi: Không tìm thấy file trong {data_dir}. {e}")
+            continue
+
+    if not X_train_list:
+        raise ValueError("Không nạp được dataset nào! Kiểm tra lại config 'data_dirs'.")
+
+    # Gộp toàn bộ dữ liệu
+    X_train = np.concatenate(X_train_list, axis=0)
+    y_train = np.concatenate(y_train_list, axis=0)
+    X_val   = np.concatenate(X_val_list, axis=0)
+    y_val   = np.concatenate(y_val_list, axis=0)
+    X_test  = np.concatenate(X_test_list, axis=0)
+    y_test  = np.concatenate(y_test_list, axis=0)
+
     if verbose:
+        print("\n📊 Tổng hợp dữ liệu (Combined):")
         print(f"  Train: X={X_train.shape}, y={y_train.shape}")
         print(f"  Val:   X={X_val.shape}, y={y_val.shape}")
         print(f"  Test:  X={X_test.shape}, y={y_test.shape}")
 
-    train_dataset = FallDetectionDataset(X_train, y_train, scaler=None)
-    val_dataset = FallDetectionDataset(X_val, y_val, scaler=None)
-    test_dataset = FallDetectionDataset(X_test, y_test, scaler=None)
+    # Chuẩn hóa chung bằng StandardScaler
+    if verbose:
+        print("\n⚙️ Đang fit StandardScaler trên toàn bộ tập Train kết hợp...")
+    n, T, C = X_train.shape
+    scaler = StandardScaler()
+    scaler.fit(X_train.reshape(-1, C))
+
+    # Save global scaler to models dir
+    models_dir = 'models/final_model'
+    os.makedirs(models_dir, exist_ok=True)
+    scaler_path = os.path.join(models_dir, 'scaler_global.pkl')
+    with open(scaler_path, 'wb') as f:
+        pickle.dump(scaler, f)
+    if verbose:
+        print(f"✅ Đã lưu Global Scaler tại: {scaler_path}")
+
+    # Truyền scaler vào Dataset (Dataset sẽ tự gọi scaler.transform())
+    train_dataset = FallDetectionDataset(X_train, y_train, scaler=scaler, fit_scaler=False)
+    val_dataset   = FallDetectionDataset(X_val, y_val, scaler=scaler, fit_scaler=False)
+    test_dataset  = FallDetectionDataset(X_test, y_test, scaler=scaler, fit_scaler=False)
 
     batch_size = config.get('training', {}).get('batch_size', 64)
     use_sampler = config.get('training', {}).get('use_sampler', True)

@@ -28,7 +28,9 @@ data:
   val_ratio: 0.15
   test_ratio: 0.15
   strict_label_check: false
-  data_dir: dataset/sisfall_processed
+  data_dirs:
+    - dataset/sisfall_processed
+    - dataset/MobiAct_Processed
 model:
   type: ensemble
   threshold: 0.8

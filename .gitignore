@@ -16,6 +16,7 @@ dataset/
 dataset_pending/
 models/
 logs/
+data preprocessing/
 
 # IDE & Hệ điều hành
 .vscode/

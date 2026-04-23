@@ -64,26 +64,3 @@ python predict.py --input "thu_muc_chua_nhieu_file_txt"
 
 Quét TOÀN BỘ THƯ MỤC, lưu báo cáo thành tên txt chỉ định:
 python predict.py --input "thu_muc_chua_nhieu_file_txt" bao_cao_tong_ket.txt
-
-## Tiêu chuẩn Dữ liệu (Standardized Dataset Form)
-
-Để mô hình AI hoạt động trơn tru, đồng thời đạt độ chính xác cao nhất và tiết kiệm pin nhất trên các bộ chip mạch nhúng (Edge AI, IoT) trong tương lai, toàn bộ dữ liệu dự kiến đi vào dự án (kể cả tự thu thập thêm) **BẮT BUỘC** phải tuân theo hệ quy chiếu vật lý và toán học sau:
-
-### 1. Cấu trúc Cảm biến (Sensor Channels)
-Mạng Nơ-ron đã được lập trình để tiêu thụ mảng **6 kênh tín hiệu** liên tục, sắp xếp theo bề ngang đúng thứ tự sau:
-1. Nhánh 1: `Acc_X`, `Acc_Y`, `Acc_Z` (Ký hiệu gia tốc kế 3 trục)
-2. Nhánh 2: `Gyro_X`, `Gyro_Y`, `Gyro_Z` (Ký hiệu con quay hồi chuyển 3 trục)
-
-*Lưu ý:* Các kênh cảm biến phụ khác (như Phương vị góc Orient, lực Từ kế...) phải được lọc bỏ đi tại vi mạch gốc để tránh làm vỡ ma trận chiều của Input Layer.
-
-### 2. Thông số Trục Thời gian (Temporal Setup)
-- **Tần số lấy mẫu (Sampling Rate):** `50Hz`. Đây là băng tần vàng tối ưu nhất cho Fall Detection. Vừa dư sức để bắt trọn 100% các xung lực va đập chớp nhoáng khi ngã, vừa giúp tiết kiệm gấp 4 lần lượng điện năng, bộ nhớ RAM và băng thông truyền tải IOT so với mức xung 200Hz.
-- **Kích thước Cửa sổ (Window Size / Timesteps):** `100 timesteps`. Ở mức xung 50Hz, 100 mốc thời gian sẽ bằng cực kì chuẩn xác `2.0 giây`. Giai đoạn té ngã vật lý thường chỉ diễn ra chưa tới 1 giây.
-- **Hệ quả:** Mỗi mẫu học (Data Sample) đưa vào mạng Nơ-ron sẽ được đúc vĩnh viễn thành một khối Rubik có hình dạng: `[100, 6]`.
-
-### 3. Đơn vị Đo lường Chuẩn (Unified Physical Units)
-Để việc chuẩn hóa (Z-Score) và tính toán khoảng cách vector không bị sai lệch, nghiêm cấm trộn lẫn các hệ đo lường có tầm phủ (Scale) khác nhau. Đơn vị chuẩn được thống nhất cho toàn dự án:
-- **Gia tốc kế (Accelerometer):** Thu nhận bằng hệ `g` (Gia tốc trọng trường, với $1g \approx 9.81 \text{m/s}^2$). Không được nạp trực tiếp giá trị theo $\text{m/s}^2$. 
-- **Con quay hồi chuyển (Gyroscope):** Thu nhận bằng hệ `Độ/giây (deg/s)`. Tuyệt đối không nạp hệ `Radian/s`.
-
-*(Chỉ cần áp chặt dữ liệu vi mạch Arduino vào "khuôn đúc chuẩn" ở trên, bạn có thể tự do gộp chung tập dữ liệu tự thu của thiết bị vào cùng túi chung với Sisfall mà mô hình sẽ hoàn toàn không bị "tẩu hỏa nhập ma"!*
