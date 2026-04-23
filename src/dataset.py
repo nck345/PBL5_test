@@ -201,8 +201,23 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
     # Hỗ trợ cả 'data_dirs' (list) và 'data_dir' (chuỗi) để tương thích ngược
     if 'data_dirs' in data_config:
         data_dirs = data_config['data_dirs']
+        if isinstance(data_dirs, str):
+            data_dirs = [data_dirs]
     else:
-        data_dirs = [data_config.get('data_dir', 'dataset/sisfall_processed')]
+        data_dirs = [data_config.get('data_dir', 'all')]
+
+    # Tính năng tự động quét tất cả dataset nếu data_dirs có chứa 'all'
+    if 'all' in data_dirs:
+        import glob
+        data_dirs = []
+        base_dataset_path = 'dataset'
+        if os.path.exists(base_dataset_path):
+            for d in os.listdir(base_dataset_path):
+                full_path = os.path.join(base_dataset_path, d)
+                if os.path.isdir(full_path) and os.path.exists(os.path.join(full_path, 'X_train.npy')):
+                    data_dirs.append(full_path)
+        if not data_dirs:
+            print("⚠️ Cảnh báo: Chế độ 'all' không tìm thấy thư mục dataset hợp lệ nào trong 'dataset/'.")
 
     if verbose:
         print("=" * 50)

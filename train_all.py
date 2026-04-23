@@ -39,6 +39,8 @@ def parse_args():
                         help='Batch size (ghi đè config)')
     parser.add_argument('--lr', type=float, default=None,
                         help='Learning rate (ghi đè config)')
+    parser.add_argument('--datasets', type=str, nargs='+', default=None,
+                        help='Chỉ định các dataset cụ thể để train (vd: --datasets dataset/MobiAct_Processed). Ghi đè cấu hình tự động scan.')
     parser.add_argument('--device', type=str, default=None,
                         help='Device: auto, cpu, cuda')
     parser.add_argument('--no-es', action='store_true',
@@ -55,14 +57,16 @@ def main():
     print("Loading configuration...")
     base_config = load_config(args.config)
 
-    # Ghi đè config bằng command-line args
-    if args.epochs is not None:
+    # Ghi đè cấu hình từ command line
+    if args.epochs:
         base_config['training']['epochs'] = args.epochs
-    if args.batch_size is not None:
+    if args.batch_size:
         base_config['training']['batch_size'] = args.batch_size
-    if args.lr is not None:
+    if args.lr:
         base_config['training']['learning_rate'] = args.lr
-    if args.device is not None:
+    if args.datasets:
+        base_config['data']['data_dirs'] = args.datasets
+    if args.device:
         base_config['device'] = args.device
     if args.no_es:
         if 'training' in base_config and 'early_stopping' in base_config['training']:
