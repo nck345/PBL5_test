@@ -34,7 +34,7 @@ data:
 model:
   type: ensemble
   threshold: 0.8
-  input_size: 6
+  input_size: 9
   lstm:
     hidden_size: 30
     num_layers: 2
