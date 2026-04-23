@@ -185,6 +185,12 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
             'status': 'SKIPPED',
             'reason': 'Không đủ dữ liệu cho windowing',
         }
+        
+    # Tự động Feature Engineering (từ 6/7 lên 9 kênh) nếu config yêu cầu input_size = 9
+    input_size_cfg = config.get('model', {}).get('input_size', 6)
+    if input_size_cfg >= 9 and windows.shape[2] < 9:
+        from src.dataset import feature_engineering
+        windows = np.array([feature_engineering(w) for w in windows])
 
     # Dự đoán
     model.eval()
@@ -260,6 +266,12 @@ def stream_predict(filepath: str, model: torch.nn.Module, config: dict,
 
             # Tiền xử lý
             window_processed = preprocess_signal(window_data, config, scaler)
+            
+            # Feature Engineering
+            input_size_cfg = config.get('model', {}).get('input_size', 6)
+            if input_size_cfg >= 9 and window_processed.shape[1] < 9:
+                from src.dataset import feature_engineering
+                window_processed = feature_engineering(window_processed)
 
             # Dự đoán
             with torch.no_grad():
