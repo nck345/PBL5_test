@@ -279,11 +279,13 @@ class EnsembleLSTM(nn.Module):
         # Meta-classifier: học cách kết hợp kết quả của các model cơ sở
         # Thêm Dropout 0.2 để tránh Overfit do mô hình được training trên 100% data
         meta_input_size = num_models * num_classes
+        meta_hidden_size = max(num_models * 4, 16)
         self.meta_classifier = nn.Sequential(
-            nn.Linear(meta_input_size, max(num_models, 4)), 
+            nn.Linear(meta_input_size, meta_hidden_size), 
+            nn.BatchNorm1d(meta_hidden_size),
             nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(max(num_models, 4), num_classes),
+            nn.Dropout(0.3),
+            nn.Linear(meta_hidden_size, num_classes),
             nn.Sigmoid()
         )
 

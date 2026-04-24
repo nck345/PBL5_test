@@ -23,7 +23,7 @@ data:
   - CSO
   - LYI
   window_size: 100
-  overlap: 0.15
+  overlap: 0.25
   train_ratio: 0.7
   val_ratio: 0.15
   test_ratio: 0.15
@@ -32,15 +32,15 @@ data:
     - all
 model:
   type: ensemble
-  threshold: 0.8
+  threshold: 0.5
   input_size: 9
   lstm:
-    hidden_size: 30
+    hidden_size: 64
     num_layers: 2
     dropout: 0.1
-    bidirectional: false
+    bidirectional: true
   ensemble:
-    num_models: 3
+    num_models: 9
     overlap_ratio: 0.15
     meta_train_ratio: 0.25
     meta_learning_rate: 0.0005
