@@ -1,4 +1,5 @@
 # Python / Cache
+src/__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,15 +9,10 @@ venv/
 env/
 .env
 
-# Jupyter Notebook
-.ipynb_checkpoints/
-
 # Dữ liệu & AI Models (KHÔNG đưa lên GitHub)
 dataset/
-dataset_pending/
 models/
 logs/
-data preprocessing/
 
 # IDE & Hệ điều hành
 .vscode/
