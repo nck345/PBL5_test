@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_PATH = '../dataset/raw data/MobiAct'  # Path to raw CSV files
+BASE_PATH = '../raw data/MobiAct'  # Path to raw CSV files
 SAVE_PATH = '../dataset/MobiAct_Processed'
 
 FALL_ACTS     = ['FOL', 'FKL', 'BSC', 'SDL']

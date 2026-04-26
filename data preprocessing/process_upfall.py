@@ -11,7 +11,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_PATH = '../dataset/raw data/UpFall/CompleteDataSet.csv'
+BASE_PATH = '../raw data/UpFall/CompleteDataSet.csv'
 SAVE_PATH = '../dataset/upfall_processed'
 
 FS_TARGET = 50    # Target Hz

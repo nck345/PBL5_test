@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_PATH = '../dataset/raw data/SisFall'  # Path to raw SisFall data
+BASE_PATH = '../raw data/SisFall'  # Path to raw SisFall data
 SAVE_PATH = '../dataset/sisfall_processed'
 
 FS_ORIG   = 200   # Original Hz

@@ -1,5 +1,6 @@
 # Python / Cache
 src/__pycache__/
+data preprocessing/__pycache__
 __pycache__/
 *.py[cod]
 *$py.class
@@ -11,6 +12,7 @@ env/
 
 # Dữ liệu & AI Models (KHÔNG đưa lên GitHub)
 dataset/
+raw data/
 models/
 logs/
 

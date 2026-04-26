@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
-BASE_PATH = '../dataset/raw data/UMAFall/UMAFall_Dataset_corrected_version'
+BASE_PATH = '../raw data/UMAFall/UMAFall_Dataset_corrected_version'
 SAVE_PATH = '../dataset/umafall_processed'
 
 FS_TARGET = 50    # Target Hz
