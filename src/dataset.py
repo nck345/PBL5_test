@@ -12,6 +12,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler, Subset
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 from .utils import apply_lowpass_filter, get_scaler, normalize_data, load_config
 
@@ -227,10 +228,7 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
     X_val_list, y_val_list = [], []
     X_test_list, y_test_list = [], []
 
-    for data_dir in data_dirs:
-        if verbose:
-            print(f"  - Đang nạp từ: {data_dir}")
-        
+    for data_dir in tqdm(data_dirs, desc="Nạp dữ liệu từ các thư mục", disable=not verbose):
         # Load các file chưa scale
         try:
             X_train_list.append(np.load(os.path.join(data_dir, 'X_train.npy')))

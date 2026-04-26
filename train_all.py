@@ -87,7 +87,7 @@ def main():
     # ========================================
     print("\nPreparing data for all models...")
     try:
-        data = prepare_data(base_config, verbose=False)
+        data = prepare_data(base_config, verbose=True)
     except ValueError as e:
         print(f"\nError: {e}")
         sys.exit(1)
