@@ -191,11 +191,13 @@ def main():
             'auc': metrics['auc']
         }
         
-        # Lưu lại các metrics khác để vẽ Bar Chart
+        # Lưu lại các metrics khác để vẽ Bar Chart và báo cáo
         all_metrics[current_model] = {
             'precision': metrics['precision'],
             'recall': metrics['recall'],
-            'f1_score': metrics['f1_score']
+            'f1_score': metrics['f1_score'],
+            'accuracy': metrics['accuracy'],
+            'confusion_matrix': metrics['confusion_matrix']
         }
         
         print("="*60)

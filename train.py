@@ -174,7 +174,9 @@ def main():
     all_data['metrics'][model_name] = {
         'precision': metrics.get('precision', 0.0),
         'recall': metrics.get('recall', 0.0),
-        'f1_score': metrics.get('f1_score', 0.0)
+        'f1_score': metrics.get('f1_score', 0.0),
+        'accuracy': metrics.get('accuracy', 0.0),
+        'confusion_matrix': metrics.get('confusion_matrix', None)
     }
     
     with open(combined_data_path, 'wb') as f:
