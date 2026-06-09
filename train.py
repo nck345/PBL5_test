@@ -15,6 +15,7 @@ import sys
 if sys.stdout.encoding.lower() != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 import os
+import torch
 
 from src.utils import load_config, set_seed, get_device, count_parameters, \
     plot_training_curves, ensure_dir
@@ -46,6 +47,12 @@ def parse_args():
                         help='Device: auto, cpu, cuda')
     parser.add_argument('--no-es', action='store_true',
                         help='Tắt tính năng Early Stopping (cho chạy hết epochs)')
+    parser.add_argument('--final_model_dir', type=str, default=None,
+                        help='Thư mục lưu trữ mô hình và scaler (vd: models/final_model/scratch)')
+    parser.add_argument('--pretrained_dir', type=str, default=None,
+                        help='Thư mục chứa mô hình và scaler pre-trained để fine-tune (vd: models/final_model/scratch)')
+    parser.add_argument('--fine_tuning', action='store_true',
+                        help='Bật chế độ Fine-tuning (nạp model từ scratch, train trên esp32, lưu vào fine-tuning)')
     return parser.parse_args()
 
 
@@ -67,6 +74,18 @@ def main():
         config['training']['learning_rate'] = args.lr
     if args.model:
         config['model']['type'] = args.model
+    # Cấu hình mặc định dựa trên chế độ fine_tuning
+    if args.fine_tuning:
+        if not args.pretrained_dir:
+            args.pretrained_dir = 'models/final_model/scratch'
+        if not args.final_model_dir:
+            args.final_model_dir = 'models/final_model/fine-tuning'
+        if not args.datasets:
+            args.datasets = ['dataset/esp32_processed']
+    else:
+        if not args.final_model_dir:
+            args.final_model_dir = 'models/final_model/scratch'
+
     if args.datasets:
         config['data']['data_dirs'] = args.datasets
     if args.device:
@@ -74,6 +93,13 @@ def main():
     if args.no_es:
         if 'training' in config and 'early_stopping' in config['training']:
             config['training']['early_stopping']['enabled'] = False
+            
+    if 'paths' not in config:
+        config['paths'] = {}
+    if args.final_model_dir:
+        config['paths']['final_model_dir'] = args.final_model_dir
+    if args.pretrained_dir:
+        config['paths']['pretrained_dir'] = args.pretrained_dir
 
     # ========================================
     # 2. Setup
@@ -105,6 +131,37 @@ def main():
     # ========================================
     print("\n🏗️ Đang xây dựng model...")
     model = build_model(config)
+    
+    # Nạp trọng số pretrained nếu có
+    pretrained_dir = config.get('paths', {}).get('pretrained_dir')
+    if pretrained_dir:
+        model_name = config['model']['type']
+        pretrained_path = None
+        if model_name == 'ensemble':
+            possible_paths = [
+                os.path.join(pretrained_dir, "ensemble.pt"),
+                os.path.join(pretrained_dir, "ensemble.pth")
+            ]
+        else:
+            possible_paths = [
+                os.path.join(pretrained_dir, f"{model_name}.pt"),
+                os.path.join(pretrained_dir, f"{model_name}.pth"),
+                os.path.join(pretrained_dir, "fall_detection_model.pt")
+            ]
+        for p in possible_paths:
+            if os.path.exists(p):
+                pretrained_path = p
+                break
+        
+        if pretrained_path:
+            print(f"🔄 Đang nạp trọng số pre-trained từ: {pretrained_path}")
+            checkpoint = torch.load(pretrained_path, map_location=device, weights_only=True)
+            state_dict = checkpoint.get('model_state_dict', checkpoint)
+            model.load_state_dict(state_dict)
+            print("✓ Nạp trọng số pre-trained thành công!")
+        else:
+            print(f"⚠️ Cảnh báo: Không tìm thấy file trọng số pre-trained cho '{model_name}' tại '{pretrained_dir}'. Sẽ train từ đầu (scratch).")
+
     n_params = count_parameters(model)
     print(f"  Model: {config['model']['type']}")
     print(f"  Tổng tham số: {n_params:,}")

@@ -11,6 +11,8 @@ Usage:
 
 import argparse
 import sys
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 import os
 
 from src.utils import load_config, set_seed, get_device
@@ -53,6 +55,15 @@ def main():
     if args.device:
         config['device'] = args.device
 
+    # Set final_model_dir and load_scaler_path based on model_path directory
+    model_dir = os.path.dirname(args.model_path)
+    if 'paths' not in config:
+        config['paths'] = {}
+    config['paths']['final_model_dir'] = model_dir
+    if 'data' not in config:
+        config['data'] = {}
+    config['data']['load_scaler_path'] = os.path.join(model_dir, 'scaler_global.pkl')
+
     seed = config.get('seed', 42)
     set_seed(seed)
     device = get_device(config.get('device', 'auto'))
@@ -84,6 +95,13 @@ def main():
     # 4. Load model
     # ========================================
     print("\n🏗️ Đang tải model...")
+    import torch
+    # Đọc nhanh model type từ checkpoint trước để build đúng model architecture
+    temp_checkpoint = torch.load(args.model_path, map_location=device, weights_only=False)
+    loaded_config = temp_checkpoint.get('config', {})
+    if 'model' in loaded_config and 'type' in loaded_config['model']:
+        config['model']['type'] = loaded_config['model']['type']
+        
     model = build_model(config)
     model, loaded_config, history = Trainer.load_model(
         model, args.model_path, device

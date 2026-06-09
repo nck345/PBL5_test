@@ -48,6 +48,8 @@ def parse_args():
                         help='Device: auto, cpu, cuda')
     parser.add_argument('--save_report', type=str, default=None, nargs='?', const='',
                         help='Đường dẫn file lưu báo cáo. Nếu không truyền sẽ tự tạo default.')
+    parser.add_argument('--final_model_dir', type=str, default=None,
+                        help='Thư mục chứa model và scaler (vd: models/final_model/scratch)')
     
     # Allow extra unparsed positional arguments from batch script (e.g. stream flag, report name)
     parser.add_argument('extra_args', nargs=argparse.REMAINDER, 
@@ -358,6 +360,12 @@ def main():
         
     config['save_report_path'] = save_path
 
+    # Ghi đè cấu hình final_model_dir từ command line nếu có
+    if 'paths' not in config:
+        config['paths'] = {}
+    if args.final_model_dir:
+        config['paths']['final_model_dir'] = args.final_model_dir
+
     # ========================================
     # 2. Load model
     # ========================================
@@ -365,12 +373,18 @@ def main():
     if args.model != 'fall_detection_model':
         config['model']['type'] = args.model
         
-    model_path = os.path.join(config['paths'].get('final_model_dir', 'models/final_model'), f"{args.model}.pt")
+    final_model_dir = config['paths'].get('final_model_dir', 'models/final_model')
+    model_path = os.path.join(final_model_dir, f"{args.model}.pt")
 
     if not os.path.exists(model_path):
-        print(f"\n❌ Không tìm thấy model tại: {model_path}")
-        print("   Hãy chạy 'python train.py' hoặc 'train_all.py' trước.")
-        sys.exit(1)
+        # Thử tìm với đuôi .pth cho Ensemble
+        alt_path = os.path.join(final_model_dir, f"{args.model}.pth")
+        if os.path.exists(alt_path):
+            model_path = alt_path
+        else:
+            print(f"\n❌ Không tìm thấy model tại: {model_path}")
+            print("   Hãy chạy 'python train.py' hoặc 'train_all.py' trước.")
+            sys.exit(1)
 
     print(f"🏗️ Đang tải model {args.model.upper()} từ: {model_path}")
     model = build_model(config)
@@ -381,10 +395,17 @@ def main():
     # 2.5 Load Scaler
     # ========================================
     import pickle
-    data_dir = config['data'].get('data_dir', 'dataset/sisfall_processed')
-    scaler_path_1 = os.path.join(data_dir, 'step6_scaler.pkl')
-    scaler_path_2 = os.path.join(data_dir, 'scaler.pkl')
-    scaler_path = scaler_path_1 if os.path.exists(scaler_path_1) else scaler_path_2
+    scaler_path_global = os.path.join(final_model_dir, 'scaler_global.pkl')
+    
+    if os.path.exists(scaler_path_global):
+        scaler_path = scaler_path_global
+    else:
+        # Fallback to dataset directory
+        data_dir = config['data'].get('data_dir', 'dataset/sisfall_processed')
+        scaler_path_1 = os.path.join(data_dir, 'step6_scaler.pkl')
+        scaler_path_2 = os.path.join(data_dir, 'scaler.pkl')
+        scaler_path = scaler_path_1 if os.path.exists(scaler_path_1) else scaler_path_2
+        
     try:
         with open(scaler_path, 'rb') as f:
             scaler = pickle.load(f)

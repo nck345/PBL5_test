@@ -320,10 +320,9 @@ class EnsembleTrainer:
             self.model.meta_classifier.parameters(),
             is_meta=True
         )
-        loss_fn_str = self.config.get('training', {}).get('loss_function', 'bce')
         if loss_fn_str == 'focal':
             from .losses import FocalLoss
-            criterion = FocalLoss(alpha=0.5, gamma=2.0) # meta classifier may not need high imbalance alpha
+            criterion = FocalLoss(alpha=0.65, gamma=2.0) # Tăng nhẹ alpha lên 0.65 để tăng recall cho ensemble
         else:
             criterion = nn.BCELoss()
 

@@ -216,6 +216,10 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
             for d in os.listdir(base_dataset_path):
                 full_path = os.path.join(base_dataset_path, d)
                 if os.path.isdir(full_path) and os.path.exists(os.path.join(full_path, 'X_train.npy')):
+                    # Loại trừ dữ liệu esp32 khỏi chế độ 'all' nếu không phải fine-tuning
+                    is_fine_tuning = config.get('paths', {}).get('pretrained_dir') is not None
+                    if 'esp32' in d.lower() and not is_fine_tuning:
+                        continue
                     data_dirs.append(full_path)
         if not data_dirs:
             print("⚠️ Cảnh báo: Chế độ 'all' không tìm thấy thư mục dataset hợp lệ nào trong 'dataset/'.")
@@ -258,15 +262,34 @@ def prepare_data(config: dict, verbose: bool = True) -> dict:
         print(f"  Val:   X={X_val.shape}, y={y_val.shape}")
         print(f"  Test:  X={X_test.shape}, y={y_test.shape}")
 
-    # Chuẩn hóa chung bằng StandardScaler
-    if verbose:
-        print("\n⚙️ Đang fit StandardScaler trên toàn bộ tập Train kết hợp...")
-    n, T, C = X_train.shape
-    scaler = StandardScaler()
-    scaler.fit(X_train.reshape(-1, C))
+    # Check if we should load scaler or fit a new one
+    scaler_load_path = config.get('data', {}).get('load_scaler_path')
+    if scaler_load_path and os.path.exists(scaler_load_path):
+        if verbose:
+            print(f"⚙️ Đang nạp StandardScaler từ: {scaler_load_path}")
+        with open(scaler_load_path, 'rb') as f:
+            scaler = pickle.load(f)
+    else:
+        pretrained_dir = config.get('paths', {}).get('pretrained_dir')
+        pretrained_scaler_path = None
+        if pretrained_dir:
+            pretrained_scaler_path = os.path.join(pretrained_dir, 'scaler_global.pkl')
+
+        if pretrained_scaler_path and os.path.exists(pretrained_scaler_path):
+            if verbose:
+                print(f"⚙️ Đang nạp StandardScaler từ session pre-trained: {pretrained_scaler_path}")
+            with open(pretrained_scaler_path, 'rb') as f:
+                scaler = pickle.load(f)
+        else:
+            if verbose:
+                print("\n⚙️ Đang fit StandardScaler trên toàn bộ tập Train kết hợp...")
+            n, T, C = X_train.shape
+            scaler = StandardScaler()
+            scaler.fit(X_train.reshape(-1, C))
 
     # Save global scaler to models dir
-    models_dir = 'models/final_model'
+    paths_cfg = config.get('paths', {})
+    models_dir = paths_cfg.get('final_model_dir', 'models/final_model')
     os.makedirs(models_dir, exist_ok=True)
     scaler_path = os.path.join(models_dir, 'scaler_global.pkl')
     with open(scaler_path, 'wb') as f:

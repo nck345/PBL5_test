@@ -69,7 +69,8 @@ preprocessing:
   normalization: standard
 paths:
   checkpoint_dir: models/checkpoints
-  final_model_dir: models/final_model
+  final_model_dir: models/final_model  # Thư mục lưu mô hình cuối cùng và scaler
+  pretrained_dir: null                 # Thư mục chứa mô hình và scaler pre-trained để fine-tuning (mặc định: null)
   log_dir: logs
 evaluation:
   threshold_mode: val_calibrated
