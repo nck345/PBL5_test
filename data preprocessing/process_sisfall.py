@@ -152,8 +152,13 @@ if __name__ == '__main__':
     all_files = glob.glob(os.path.join(BASE_PATH, '**', '*.txt'), recursive=True)
     print(f"Found {len(all_files)} TXT files to process.")
 
-    X_fall_all, X_adl_all = [], []
-    y_fall_all, y_adl_all = [], []
+    X_fall_all = []
+    X_lying_all = []
+    X_other_adl_all = []
+    
+    y_fall_all = []
+    y_lying_all = []
+    y_other_adl_all = []
 
     for i, fp in enumerate(all_files):
         filename = os.path.basename(fp)
@@ -165,32 +170,66 @@ if __name__ == '__main__':
             if activity_code.startswith('F'):
                 X_fall_all.append(X_w)
                 y_fall_all.append(y_w)
+            elif activity_code in ['D13', 'D14']:
+                X_lying_all.append(X_w)
+                y_lying_all.append(y_w)
             else:
-                X_adl_all.append(X_w)
-                y_adl_all.append(y_w)
+                X_other_adl_all.append(X_w)
+                y_other_adl_all.append(y_w)
                 
         if (i+1) % 500 == 0:
             print(f"Processed {i+1}/{len(all_files)} files...")
 
     X_fall = np.concatenate(X_fall_all, axis=0) if X_fall_all else np.array([])
     y_fall = np.concatenate(y_fall_all, axis=0) if y_fall_all else np.array([])
-    X_adl  = np.concatenate(X_adl_all,  axis=0) if X_adl_all else np.array([])
-    y_adl  = np.concatenate(y_adl_all,  axis=0) if y_adl_all else np.array([])
+    
+    X_lying = np.concatenate(X_lying_all, axis=0) if X_lying_all else np.array([])
+    y_lying = np.concatenate(y_lying_all, axis=0) if y_lying_all else np.array([])
+    
+    X_other_adl = np.concatenate(X_other_adl_all, axis=0) if X_other_adl_all else np.array([])
+    y_other_adl = np.concatenate(y_other_adl_all, axis=0) if y_other_adl_all else np.array([])
 
-    if len(X_fall) == 0 or len(X_adl) == 0:
+    if len(X_fall) == 0 or (len(X_lying) == 0 and len(X_other_adl) == 0):
         print("Error: No valid data processed.")
         exit(1)
 
-    print(f"Extracted: {len(X_fall)} Fall windows, {len(X_adl)} ADL windows.")
+    print(f"Extracted: {len(X_fall)} Fall windows, {len(X_lying)} Lying ADL windows, {len(X_other_adl)} Other ADL windows.")
+
+    # Oversample lying down ADLs 5x to combat class imbalance
+    if len(X_lying) > 0:
+        X_lying = np.repeat(X_lying, 5, axis=0)
+        y_lying = np.repeat(y_lying, 5, axis=0)
+        print(f"  -> Oversampled Lying ADLs (5x): new count = {len(X_lying)} windows")
 
     # Balance classes (1 Fall : 4 ADL)
     n_fall = len(X_fall)
-    n_adl_keep = min(len(X_adl), n_fall * 4)
+    n_adl_keep = min(len(X_lying) + len(X_other_adl), n_fall * 4)
+    
+    # Prioritize keeping all (oversampled) lying down windows
+    n_lying_keep = min(len(X_lying), n_adl_keep)
+    n_other_keep = n_adl_keep - n_lying_keep
     
     np.random.seed(42)
-    idx_adl = np.random.choice(len(X_adl), n_adl_keep, replace=False)
-    X_adl_sub = X_adl[idx_adl]
-    y_adl_sub = y_adl[idx_adl]
+    # Trim lying down if somehow they exceed the total limit (very unlikely)
+    if n_lying_keep < len(X_lying):
+        idx_lying = np.random.choice(len(X_lying), n_lying_keep, replace=False)
+        X_lying_sub = X_lying[idx_lying]
+        y_lying_sub = y_lying[idx_lying]
+    else:
+        X_lying_sub = X_lying
+        y_lying_sub = y_lying
+        
+    # Sample from other ADLs
+    if n_other_keep > 0:
+        idx_other = np.random.choice(len(X_other_adl), n_other_keep, replace=False)
+        X_other_sub = X_other_adl[idx_other]
+        y_other_sub = y_other_adl[idx_other]
+        
+        X_adl_sub = np.concatenate([X_lying_sub, X_other_sub], axis=0)
+        y_adl_sub = np.concatenate([y_lying_sub, y_other_sub], axis=0)
+    else:
+        X_adl_sub = X_lying_sub
+        y_adl_sub = y_lying_sub
 
     X_all = np.concatenate([X_fall, X_adl_sub])
     y_all = np.concatenate([y_fall, y_adl_sub])
