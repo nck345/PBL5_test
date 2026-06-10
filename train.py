@@ -74,6 +74,9 @@ def main():
         config['training']['learning_rate'] = args.lr
     if args.model:
         config['model']['type'] = args.model
+    if 'paths' not in config:
+        config['paths'] = {}
+
     # Cấu hình mặc định dựa trên chế độ fine_tuning
     if args.fine_tuning:
         if not args.pretrained_dir:
@@ -82,9 +85,13 @@ def main():
             args.final_model_dir = 'models/final_model/fine-tuning'
         if not args.datasets:
             args.datasets = ['dataset/esp32_processed']
+        config['paths']['log_dir'] = 'logs/fine-tuning'
+        config['paths']['checkpoint_dir'] = 'models/checkpoints/fine-tuning'
     else:
         if not args.final_model_dir:
             args.final_model_dir = 'models/final_model/scratch'
+        config['paths']['log_dir'] = 'logs/scratch'
+        config['paths']['checkpoint_dir'] = 'models/checkpoints/scratch'
 
     if args.datasets:
         config['data']['data_dirs'] = args.datasets
@@ -94,8 +101,6 @@ def main():
         if 'training' in config and 'early_stopping' in config['training']:
             config['training']['early_stopping']['enabled'] = False
             
-    if 'paths' not in config:
-        config['paths'] = {}
     if args.final_model_dir:
         config['paths']['final_model_dir'] = args.final_model_dir
     if args.pretrained_dir:

@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore')
 # ─────────────────────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-BASE_PATH = os.path.join(PROJECT_ROOT, 'data', 'raw')
+BASE_PATH = os.path.join(PROJECT_ROOT, 'raw data', 'esp32')
 SAVE_PATH = os.path.join(PROJECT_ROOT, 'dataset', 'esp32_processed')
 
 FS = 50       # sampling frequency (already 50Hz)

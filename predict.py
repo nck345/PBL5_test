@@ -17,6 +17,8 @@ Usage:
 import argparse
 import os
 import sys
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 import time
 import glob
 import numpy as np
@@ -79,9 +81,11 @@ def preprocess_signal(data: np.ndarray, config: dict,
         order = filter_cfg.get('order', 4)
         data = apply_lowpass_filter(data, cutoff=cutoff, fs=fs, order=order)
 
-    # Normalize
+    # Normalize (chỉ chuẩn hóa nếu số lượng features khớp)
     if scaler is not None:
-        data, _ = normalize_data(data, scaler, fit=False)
+        n_channels = data.shape[1]
+        if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ == n_channels:
+            data, _ = normalize_data(data, scaler, fit=False)
 
     return data
 
@@ -89,24 +93,53 @@ def load_predict_data(filepath: str, sensors: list) -> dict:
     """Helper linh hoat tu dong nap du lieu giong train"""
     import scipy.signal
     if filepath.endswith('.csv'):
-        # Xu ly Archive 3 file
-        import csv
-        acc_lines = []
+        # Tự động phát hiện định dạng ESP32 (phân tách dấu phẩy, chứa accX/trial_id)
         with open(filepath, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter=';')
-            next(reader, None)
-            for row in reader:
-                if len(row) >= 6:
-                    try:
-                        acc_lines.append([float(row[3]), float(row[4]), float(row[5])])
-                    except ValueError:
-                        pass
-        data = np.array(acc_lines)
-        if len(data) >= 10:
-            data = scipy.signal.resample(data, len(data) * 2)
-        activity_code = "ADL" if "Sit" in os.path.basename(filepath) else "FALL"
-        subject_id = -1
-        has_gyro = False
+            first_line = f.readline()
+        
+        is_esp32 = ',' in first_line and ('accX' in first_line or 'trial_id' in first_line)
+        
+        if is_esp32:
+            import pandas as pd
+            df = pd.read_csv(filepath)
+            df.columns = [c.strip() for c in df.columns]
+            
+            acc_cols = ['accX', 'accY', 'accZ']
+            gyro_cols = ['gyroX', 'gyroY', 'gyroZ']
+            
+            df = df.dropna(subset=acc_cols)
+            data = df[acc_cols].values
+            
+            has_gyro = False
+            if all(col in df.columns for col in gyro_cols):
+                df = df.dropna(subset=gyro_cols)
+                gyro_data = df[gyro_cols].values
+                has_gyro = True
+                
+            activity_code = df['activity'].iloc[0] if 'activity' in df.columns else "N/A"
+            try:
+                subject_id = int(df['subject'].iloc[0].replace('S', '')) if 'subject' in df.columns else -1
+            except ValueError:
+                subject_id = -1
+        else:
+            # Xu ly Archive 3 file (SisFall cũ)
+            import csv
+            acc_lines = []
+            with open(filepath, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f, delimiter=';')
+                next(reader, None)
+                for row in reader:
+                    if len(row) >= 6:
+                        try:
+                            acc_lines.append([float(row[3]), float(row[4]), float(row[5])])
+                        except ValueError:
+                            pass
+            data = np.array(acc_lines)
+            if len(data) >= 10:
+                data = scipy.signal.resample(data, len(data) * 2)
+            activity_code = "ADL" if "Sit" in os.path.basename(filepath) else "FALL"
+            subject_id = -1
+            has_gyro = False
     else:
         # Xu ly MobiAct
         res = parse_mobiact_file(filepath)
@@ -161,8 +194,8 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
     result = load_predict_data(filepath, sensors)
     data = result.get('data', np.array([]))
 
-    # Loại bỏ cờ padding (kênh 7) đối với mô hình thiết kế 6 kênh
-    if data.shape[1] == 7 and config.get('model', {}).get('input_size', 6) == 6:
+    # Loại bỏ cờ padding (kênh 7) đối với mô hình thiết kế 6 hoặc 9 kênh
+    if data.shape[1] == 7 and config.get('model', {}).get('input_size', 6) in [6, 9]:
         data = data[:, :6]
 
     if data.shape[0] < 10:
@@ -172,7 +205,7 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
             'reason': 'Dữ liệu quá ngắn',
         }
 
-    # Tiền xử lý
+    # Tiền xử lý (lọc thông thấp, tạm thời chưa scale nếu scaler cần 9 kênh)
     data_processed = preprocess_signal(data, config, scaler)
 
     # Windowing
@@ -193,6 +226,15 @@ def predict_file(filepath: str, model: torch.nn.Module, config: dict,
     if input_size_cfg >= 9 and windows.shape[2] < 9:
         from src.dataset import feature_engineering
         windows = np.array([feature_engineering(w) for w in windows])
+
+    # Chuẩn hóa (Normalize) sau Feature Engineering nếu chưa được normalize ở bước preprocess
+    if scaler is not None:
+        n_windows, win_size, n_channels = windows.shape
+        if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ == n_channels:
+            if data_processed.shape[1] != n_channels:
+                windows_flat = windows.reshape(-1, n_channels)
+                windows_flat, _ = normalize_data(windows_flat, scaler, fit=False)
+                windows = windows_flat.reshape(n_windows, win_size, n_channels)
 
     # Dự đoán
     model.eval()
@@ -235,8 +277,8 @@ def stream_predict(filepath: str, model: torch.nn.Module, config: dict,
     result = load_predict_data(filepath, sensors)
     data = result.get('data', np.array([]))
 
-    # Loại bỏ cờ padding (kênh 7) đối với mô hình thiết kế 6 kênh
-    if data.shape[1] == 7 and config.get('model', {}).get('input_size', 6) == 6:
+    # Loại bỏ cờ padding (kênh 7) đối với mô hình thiết kế 6 hoặc 9 kênh
+    if data.shape[1] == 7 and config.get('model', {}).get('input_size', 6) in [6, 9]:
         data = data[:, :6]
 
     if data.shape[0] < 10:
@@ -274,6 +316,13 @@ def stream_predict(filepath: str, model: torch.nn.Module, config: dict,
             if input_size_cfg >= 9 and window_processed.shape[1] < 9:
                 from src.dataset import feature_engineering
                 window_processed = feature_engineering(window_processed)
+
+            # Chuẩn hóa (Normalize) sau Feature Engineering nếu chưa được scale ở bước preprocess
+            if scaler is not None:
+                n_channels = window_processed.shape[1]
+                if hasattr(scaler, 'n_features_in_') and scaler.n_features_in_ == n_channels:
+                    if window_data.shape[1] != n_channels:
+                        window_processed, _ = normalize_data(window_processed, scaler, fit=False)
 
             # Dự đoán
             with torch.no_grad():
@@ -340,11 +389,24 @@ def main():
     set_seed(config.get('seed', 42))
     device = get_device(config.get('device', 'auto'))
 
+    # Ghi đè cấu hình final_model_dir từ command line nếu có
+    if 'paths' not in config:
+        config['paths'] = {}
+    if args.final_model_dir:
+        config['paths']['final_model_dir'] = args.final_model_dir
+
+    final_model_dir = config['paths'].get('final_model_dir', 'models/final_model')
+
     # Default to saving a report if not specified
     save_path = args.save_report
     
     if save_path is None or not os.path.dirname(save_path):
-        default_dir = os.path.join("logs", "predict_reports")
+        if 'fine-tuning' in final_model_dir:
+            default_dir = os.path.join("logs", "fine-tuning", "predict_reports")
+        elif 'scratch' in final_model_dir:
+            default_dir = os.path.join("logs", "scratch", "predict_reports")
+        else:
+            default_dir = os.path.join("logs", "predict_reports")
         
         # Determine default filename
         if not save_path:
@@ -359,12 +421,6 @@ def main():
         save_path = os.path.join(default_dir, save_path)
         
     config['save_report_path'] = save_path
-
-    # Ghi đè cấu hình final_model_dir từ command line nếu có
-    if 'paths' not in config:
-        config['paths'] = {}
-    if args.final_model_dir:
-        config['paths']['final_model_dir'] = args.final_model_dir
 
     # ========================================
     # 2. Load model

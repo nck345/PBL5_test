@@ -33,7 +33,7 @@ def parse_args():
                         help='Đường dẫn model đã train')
     parser.add_argument('--device', type=str, default=None,
                         help='Device: auto, cpu, cuda')
-    parser.add_argument('--save_dir', type=str, default='logs/test_results',
+    parser.add_argument('--save_dir', type=str, default=None,
                         help='Thư mục lưu kết quả')
     parser.add_argument('--threshold-mode', type=str, default=None,
                         choices=['fixed', 'val_calibrated'],
@@ -63,6 +63,15 @@ def main():
     if 'data' not in config:
         config['data'] = {}
     config['data']['load_scaler_path'] = os.path.join(model_dir, 'scaler_global.pkl')
+
+    # Xác định thư mục lưu kết quả test tự động
+    if not args.save_dir:
+        if 'fine-tuning' in model_dir:
+            args.save_dir = 'logs/fine-tuning/test_results'
+        elif 'scratch' in model_dir:
+            args.save_dir = 'logs/scratch/test_results'
+        else:
+            args.save_dir = 'logs/test_results'
 
     seed = config.get('seed', 42)
     set_seed(seed)

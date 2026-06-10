@@ -362,3 +362,20 @@ def get_ensemble_subsets(dataset: Dataset, num_models: int, overlap_ratio: float
         subsets.append(Subset(dataset, indices))
         
     return subsets
+
+
+# ============================================================
+# 8. Feature Engineering (6 -> 9 channels)
+# ============================================================
+
+def feature_engineering(window: np.ndarray) -> np.ndarray:
+    """
+    Thêm 3 kênh đặc trưng: SMA, SMV, Jerk (Tổng cộng 9 kênh)
+    Input: (WINDOW, 6) -> Output: (WINDOW, 9)
+    """
+    acc  = window[:, :3]
+    gyro = window[:, 3:]
+    sma  = np.sqrt(np.sum(acc**2, axis=1, keepdims=True))
+    smv  = np.sqrt(np.sum(gyro**2, axis=1, keepdims=True))
+    jerk = np.diff(sma[:, 0], prepend=sma[0, 0]).reshape(-1, 1)
+    return np.concatenate([window, sma, smv, jerk], axis=1)
